@@ -40,13 +40,29 @@ class AppViewModel: ObservableObject {
     @Published var mapRegion = MKCoordinateRegion(center: CLLocationCoordinate2D(latitude: 48.858844, longitude: 2.294351), span: MKCoordinateSpan(latitudeDelta: 0.01, longitudeDelta: 0.01))
     @Published var gpxCoordinates: [GPXPoint] = []
     @Published var userLocation: CLLocationCoordinate2D? = nil
+    @Published var isLoading: Bool = false
+    @Published var errorMessage: String? = nil
 
     func fetchCourses() {
-        guard let url = URL(string: "https://krono.timing.server/api/courses") else { return }
+        guard let url = URL(string: "https://track.kronotiming.fr/events") else { return }
         URLSession.shared.dataTask(with: url) { data, _, _ in
-            guard let data = data, let courses = try? JSONDecoder().decode([Course].self, from: data) else { return }
+            guard let data = data,
+                  let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let arr = obj["events"] as? [String],
+                  !arr.isEmpty else {
+                DispatchQueue.main.async {
+                    self.courses = []
+                    self.selectedCourse = nil
+                }
+                return
+            }
+            let courseList = arr.map { Course(id: $0, name: $0, gpxUrl: "") }
             DispatchQueue.main.async {
-                self.courses = courses
+                self.courses = courseList
+                // Set a default selection to avoid Picker nil warning
+                if self.selectedCourse == nil, let first = courseList.first {
+                    self.selectedCourse = first
+                }
             }
         }.resume()
     }
@@ -60,58 +76,163 @@ class AppViewModel: ObservableObject {
             }
         }.resume()
     }
+    func startTrackingIfPossible(locationManager: LocationManager, completion: @escaping (Bool) -> Void) {
+        // 1. Validate input fields
+        guard let course = selectedCourse, !bib.isEmpty, birthYear.count == 4, code.count == 6 else {
+            DispatchQueue.main.async {
+                self.errorMessage = NSLocalizedString("Veuillez remplir tous les champs correctement.", comment: "Missing fields")
+            }
+            completion(false)
+            return
+        }
+        // 2. Request notification and location permissions
+        NotificationManager.shared.requestPermissions()
+        locationManager.requestPermissions { granted in
+            guard granted else {
+                DispatchQueue.main.async {
+                    self.errorMessage = NSLocalizedString("Autorisation de localisation requise.", comment: "Location permission required")
+                }
+                completion(false)
+                return
+            }
+            // 3. Call validation API
+            self.isLoading = true
+            let url = URL(string: "https://live.kronotiming.fr/track")!
+            var req = URLRequest(url: url)
+            req.httpMethod = "POST"
+            req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            let payload: [String: Any] = [
+                "main_event": course.id,
+                "bib": Int(self.bib) ?? self.bib, // send as Int if possible
+                "birth_year": Int(self.birthYear) ?? self.birthYear, // send as Int if possible
+                "code": self.code
+            ]
+            print("Krono payload: \(payload)") // DEBUG: print payload
+            req.httpBody = try? JSONSerialization.data(withJSONObject: payload)
+            URLSession.shared.dataTask(with: req) { data, response, error in
+                DispatchQueue.main.async {
+                    self.isLoading = false
+                }
+                // DEBUG: print server response
+                if let data = data, let str = String(data: data, encoding: .utf8) {
+                    print("Krono response: \(str)")
+                }
+                guard let data = data, error == nil,
+                      let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                    DispatchQueue.main.async {
+                        self.errorMessage = NSLocalizedString("Erreur réseau ou serveur.", comment: "Network/server error")
+                    }
+                    completion(false)
+                    return
+                }
+                if let errorMsg = obj["error"] as? String {
+                    DispatchQueue.main.async {
+                        self.errorMessage = errorMsg
+                    }
+                    completion(false)
+                    return
+                }
+                // 4. Parse GPX points from response
+                if let trackArr = obj["track"] as? [[String: Any]] {
+                    let coords: [GPXPoint] = trackArr.compactMap { dict in
+                        if let lat = dict["lat"] as? Double, let lon = dict["lon"] as? Double {
+                            return GPXPoint(coordinate: CLLocationCoordinate2D(latitude: lat, longitude: lon))
+                        }
+                        return nil
+                    }
+                    DispatchQueue.main.async {
+                        self.gpxCoordinates = coords
+                        if let first = coords.first {
+                            self.mapRegion.center = first.coordinate
+                        }
+                        self.errorMessage = nil
+                    }
+                }
+                // 5. Mark as tracking
+                DispatchQueue.main.async {
+                    self.isTracking = true
+                }
+                // 6. Start location updates
+                DispatchQueue.main.async {
+                    locationManager.startTracking()
+                }
+                completion(true)
+            }.resume()
+        }
+    }
     // ...location tracking and upload logic will be added here...
 }
 
 struct ContentView: View {
     @StateObject var viewModel = AppViewModel()
     @StateObject var locationManager = LocationManager()
+    @State private var showingAlert = false
     var body: some View {
         NavigationView {
             VStack(spacing: 0) {
-                Form {
-                    Picker("Course", selection: $viewModel.selectedCourse) {
-                        ForEach(viewModel.courses) { course in
-                            Text(course.name).tag(course as Course?)
+                ZStack(alignment: .top) {
+                    Map(coordinateRegion: $viewModel.mapRegion, annotationItems: viewModel.gpxCoordinates, annotationContent: { point in
+                        MapPin(coordinate: point.coordinate)
+                    })
+                    .edgesIgnoringSafeArea(.all)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    HStack { // Add HStack to allow horizontal padding
+                        VStack(spacing: 12) {
+                            Picker("Course", selection: $viewModel.selectedCourse) {
+                                ForEach(viewModel.courses) { course in
+                                    Text(course.name).tag(course as Course?)
+                                }
+                            }
+                            .pickerStyle(.automatic)
+                            HStack(spacing: 8) {
+                                TextField(NSLocalizedString("Bib Number", comment: "Bib input"), text: $viewModel.bib)
+                                    .keyboardType(.numberPad)
+                                    .textFieldStyle(.roundedBorder)
+                                TextField(NSLocalizedString("Birth Year", comment: "Birth year input"), text: $viewModel.birthYear)
+                                    .keyboardType(.numberPad)
+                                    .textFieldStyle(.roundedBorder)
+                                TextField(NSLocalizedString("Race Code", comment: "Race code input"), text: $viewModel.code)
+                                    .textFieldStyle(.roundedBorder)
+                            }
+                            Button(viewModel.isTracking ? NSLocalizedString("Stop Tracking", comment: "Stop tracking button") : NSLocalizedString("Start Tracking", comment: "Start tracking button")) {
+                                if viewModel.isTracking {
+                                    locationManager.stopTracking()
+                                    viewModel.isTracking = false
+                                    NotificationManager.shared.showTrackingNotification(isTracking: false)
+                                } else {
+                                    viewModel.startTrackingIfPossible(locationManager: locationManager) { success in
+                                        if !success {
+                                            showingAlert = true
+                                        } else {
+                                            NotificationManager.shared.showTrackingNotification(isTracking: true)
+                                        }
+                                    }
+                                }
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .disabled(viewModel.isLoading)
+                            if viewModel.isLoading {
+                                ProgressView()
+                            }
                         }
+                        .padding()
+                        .background(Color(.systemBackground).opacity(0.85))
+                        .cornerRadius(16)
+                        .shadow(radius: 8)
+                        .padding(.top, 16)
+                        .padding(.horizontal, 16)
                     }
-                    .onAppear { viewModel.fetchCourses() }
-                    TextField("Bib Number", text: $viewModel.bib)
-                        .keyboardType(.numberPad)
-                    TextField("Birth Year", text: $viewModel.birthYear)
-                        .keyboardType(.numberPad)
-                    TextField("Race Code", text: $viewModel.code)
-                    if let course = viewModel.selectedCourse {
-                        Button("Show GPX Track") {
-                            viewModel.fetchGPX(for: course)
-                        }
-                    }
-                    Button(viewModel.isTracking ? "Stop Tracking" : "Start Tracking") {
-                        if viewModel.isTracking {
-                            locationManager.stopTracking()
-                            viewModel.isTracking = false
-                            NotificationManager.shared.showTrackingNotification(isTracking: false)
-                        } else {
-                            NotificationManager.shared.requestPermissions()
-                            locationManager.requestPermissions()
-                            locationManager.startTracking()
-                            viewModel.isTracking = true
-                            NotificationManager.shared.showTrackingNotification(isTracking: true)
-                        }
-                    }
-                    .buttonStyle(.borderedProminent)
                 }
-                .frame(maxHeight: 340) // About half the screen on most iPhones
-                Divider()
-                Map(coordinateRegion: $viewModel.mapRegion, annotationItems: viewModel.gpxCoordinates, annotationContent: { point in
-                    MapPin(coordinate: point.coordinate)
-                })
-                .edgesIgnoringSafeArea(.bottom)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
-            .navigationTitle("Krono Location")
+            .navigationTitle(NSLocalizedString("KronoTrack", comment: "App title"))
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
+                    Menu {
+                        Link(NSLocalizedString("Privacy Policy", comment: "Privacy policy link"), destination: URL(string: "https://kronotiming.fr/privacy")!)
+                    } label: {
+                        Image(systemName: "ellipsis.circle")
+                    }
                     if let userLoc = locationManager.userLocation {
                         Text("\u{1F4CD} ") + Text("\(userLoc.latitude), \(userLoc.longitude)")
                     }
@@ -120,6 +241,9 @@ struct ContentView: View {
         }
         .onAppear {
             viewModel.fetchCourses()
+        }
+        .alert(isPresented: $showingAlert) {
+            Alert(title: Text("Erreur"), message: Text(viewModel.errorMessage ?? "Erreur inconnue"), dismissButton: .default(Text("OK")))
         }
     }
 }
@@ -138,9 +262,17 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         manager.delegate = self
         manager.pausesLocationUpdatesAutomatically = false
     }
-    func requestPermissions() {
+    func requestPermissions(completion: ((Bool) -> Void)? = nil) {
         manager.requestAlwaysAuthorization()
         NotificationManager.shared.requestPermissions()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+#if targetEnvironment(simulator)
+            completion?(true)
+#else
+            let status = CLLocationManager.authorizationStatus()
+            completion?(status == .authorizedAlways || status == .authorizedWhenInUse)
+#endif
+        }
     }
     func startTracking() {
         isTracking = true
@@ -197,8 +329,8 @@ class NotificationManager {
     }
     func showTrackingNotification(isTracking: Bool) {
         let content = UNMutableNotificationContent()
-        content.title = isTracking ? "Krono Location: Tracking Active" : "Krono Location: Tracking Stopped"
-        content.body = isTracking ? "Your location is being uploaded every minute." : "Tracking has stopped."
+        content.title = isTracking ? NSLocalizedString("Krono Location: Tracking Active", comment: "Tracking active notification title") : NSLocalizedString("Krono Location: Tracking Stopped", comment: "Tracking stopped notification title")
+        content.body = isTracking ? NSLocalizedString("Your location is being uploaded every minute.", comment: "Tracking active notification body") : NSLocalizedString("Tracking has stopped.", comment: "Tracking stopped notification body")
         let request = UNNotificationRequest(identifier: "trackingStatus", content: content, trigger: nil)
         UNUserNotificationCenter.current().add(request, withCompletionHandler: nil)
     }
@@ -216,7 +348,7 @@ struct GPXParser {
                 coords.append(GPXPoint(coordinate: CLLocationCoordinate2D(latitude: lat, longitude: lon)))
             }
         }
-        return coords
+        return coords;
     }
 }
 

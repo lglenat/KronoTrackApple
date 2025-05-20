@@ -1,0 +1,15 @@
+/* KronoTrack Localizable Strings (French) */
+
+"Course" = "Course";
+"Bib Number" = "Dossard";
+"Birth Year" = "Année Naiss.";
+"Race Code" = "Code";
+"Show GPX Track" = "Afficher le tracé GPX";
+"Start Tracking" = "Démarrer le suivi";
+"Stop Tracking" = "Arrêter le suivi";
+"KronoTrack" = "KronoTrack";
+"Privacy Policy" = "Politique de confidentialité";
+"Krono Location: Tracking Active" = "Krono Localisation : Suivi actif";
+"Krono Location: Tracking Stopped" = "Krono Localisation : Suivi arrêté";
+"Your location is being uploaded every minute." = "Votre position est envoyée chaque minute.";
+"Tracking has stopped." = "Le suivi a été arrêté.";
