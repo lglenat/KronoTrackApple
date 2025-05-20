@@ -132,10 +132,10 @@ class AppViewModel: ObservableObject {
                     completion(false)
                     return
                 }
-                // 4. Parse GPX points from response
-                if let trackArr = obj["track"] as? [[String: Any]] {
-                    let coords: [GPXPoint] = trackArr.compactMap { dict in
-                        if let lat = dict["lat"] as? Double, let lon = dict["lon"] as? Double {
+                // 4. Parse track points from response (array of [lat, lon])
+                if let trackArr = obj["track"] as? [[Any]] {
+                    let coords: [GPXPoint] = trackArr.compactMap { arr in
+                        if arr.count == 2, let lat = arr[0] as? Double, let lon = arr[1] as? Double {
                             return GPXPoint(coordinate: CLLocationCoordinate2D(latitude: lat, longitude: lon))
                         }
                         return nil
@@ -163,19 +163,117 @@ class AppViewModel: ObservableObject {
     // ...location tracking and upload logic will be added here...
 }
 
+// MARK: - MapPolylineView for SwiftUI
+
+struct MapPolylineView: UIViewRepresentable {
+    var coordinates: [CLLocationCoordinate2D]
+    var userLocation: CLLocationCoordinate2D?
+
+    func makeUIView(context: Context) -> MKMapView {
+        let mapView = MKMapView()
+        mapView.delegate = context.coordinator
+        mapView.showsUserLocation = true
+        mapView.isRotateEnabled = false
+        mapView.isPitchEnabled = false
+        mapView.pointOfInterestFilter = .excludingAll
+        mapView.isZoomEnabled = true // Ensure pinch-to-zoom is enabled
+        mapView.isScrollEnabled = true // Ensure pan is enabled
+        return mapView
+    }
+
+    func updateUIView(_ mapView: MKMapView, context: Context) {
+        mapView.removeOverlays(mapView.overlays)
+        // Draw polyline if we have enough points
+        if coordinates.count > 1 {
+            let polyline = MKPolyline(coordinates: coordinates, count: coordinates.count)
+            mapView.addOverlay(polyline)
+            // Center map on first point
+            if let first = coordinates.first {
+                let region = MKCoordinateRegion(center: first, span: MKCoordinateSpan(latitudeDelta: 0.01, longitudeDelta: 0.01))
+                mapView.setRegion(region, animated: false)
+            }
+        }
+        // Optionally, add a pin for user location if available
+        if let userLoc = userLocation {
+            let annotation = MKPointAnnotation()
+            annotation.coordinate = userLoc
+            annotation.title = "Vous"
+            mapView.addAnnotation(annotation)
+        }
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
+
+    class Coordinator: NSObject, MKMapViewDelegate {
+        func mapView(_ mapView: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
+            if let polyline = overlay as? MKPolyline {
+                let renderer = MKPolylineRenderer(polyline: polyline)
+                renderer.strokeColor = UIColor(red: 174/255, green: 94/255, blue: 255/255, alpha: 1.0) // Purple
+                renderer.lineWidth = 6
+                renderer.lineJoin = .round
+                renderer.lineCap = .round
+                return renderer
+            }
+            return MKOverlayRenderer(overlay: overlay)
+        }
+    }
+}
+
 struct ContentView: View {
     @StateObject var viewModel = AppViewModel()
     @StateObject var locationManager = LocationManager()
     @State private var showingAlert = false
+    // Add a state for map zoom
+    @State private var mapSpan: MKCoordinateSpan = MKCoordinateSpan(latitudeDelta: 0.01, longitudeDelta: 0.01)
+
+    private func zoom(factor: Double) {
+        let newLat = max(0.0005, min(80, viewModel.mapRegion.span.latitudeDelta * factor))
+        let newLon = max(0.0005, min(80, viewModel.mapRegion.span.longitudeDelta * factor))
+        viewModel.mapRegion.span = MKCoordinateSpan(latitudeDelta: newLat, longitudeDelta: newLon)
+    }
+
     var body: some View {
         NavigationView {
             VStack(spacing: 0) {
                 ZStack(alignment: .top) {
-                    Map(coordinateRegion: $viewModel.mapRegion, annotationItems: viewModel.gpxCoordinates, annotationContent: { point in
-                        MapPin(coordinate: point.coordinate)
-                    })
-                    .edgesIgnoringSafeArea(.all)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    // Use MapPolylineView instead of Map
+                    MapPolylineView(coordinates: viewModel.gpxCoordinates.map { $0.coordinate }, userLocation: locationManager.userLocation)
+                        .edgesIgnoringSafeArea(.all)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .onAppear {
+                            // Sync initial span
+                            mapSpan = viewModel.mapRegion.span
+                        }
+                    // Zoom controls overlay
+                    VStack {
+                        Spacer()
+                        HStack {
+                            Spacer()
+                            VStack(spacing: 12) {
+                                Button(action: { zoom(factor: 0.5) }) {
+                                    Image(systemName: "plus.magnifyingglass")
+                                        .font(.title2)
+                                        .padding(10)
+                                        .background(Color(.systemBackground).opacity(0.85))
+                                        .clipShape(Circle())
+                                        .shadow(radius: 2)
+                                }
+                                Button(action: { zoom(factor: 2.0) }) {
+                                    Image(systemName: "minus.magnifyingglass")
+                                        .font(.title2)
+                                        .padding(10)
+                                        .background(Color(.systemBackground).opacity(0.85))
+                                        .clipShape(Circle())
+                                        .shadow(radius: 2)
+                                }
+                            }
+                            .padding(.trailing, 18)
+                            .padding(.bottom, 32)
+                        }
+                    }
+                    // ...existing code for HStack with controls...
                     HStack { // Add HStack to allow horizontal padding
                         VStack(spacing: 12) {
                             Picker("Course", selection: $viewModel.selectedCourse) {
