@@ -30,6 +30,15 @@ struct GPXPoint: Identifiable, Hashable {
     }
 }
 
+struct RunnerInfo {
+    let firstName: String
+    let lastName: String
+    let eventName: String
+    let bib: String
+    let birthYear: String
+    let code: String
+}
+
 class AppViewModel: ObservableObject {
     @Published var courses: [Course] = []
     @Published var selectedCourse: Course? = nil
@@ -42,6 +51,7 @@ class AppViewModel: ObservableObject {
     @Published var userLocation: CLLocationCoordinate2D? = nil
     @Published var isLoading: Bool = false
     @Published var errorMessage: String? = nil
+    @Published var runnerInfo: RunnerInfo? = nil
 
     func fetchCourses() {
         guard let url = URL(string: "https://track.kronotiming.fr/events") else { return }
@@ -177,6 +187,20 @@ class AppViewModel: ObservableObject {
                         self.errorMessage = nil
                     }
                 }
+                // 4b. Parse runner info if present
+                let firstName = obj["firstName"] as? String ?? ""
+                let lastName = obj["lastName"] as? String ?? ""
+                let eventName = obj["eventName"] as? String ?? self.selectedCourse?.name ?? ""
+                DispatchQueue.main.async {
+                    self.runnerInfo = RunnerInfo(
+                        firstName: firstName,
+                        lastName: lastName,
+                        eventName: eventName,
+                        bib: self.bib,
+                        birthYear: self.birthYear,
+                        code: self.code
+                    )
+                }
                 // 5. Mark as tracking
                 DispatchQueue.main.async {
                     self.isTracking = true
@@ -289,7 +313,7 @@ struct ContentView: View {
                     // Center on user location button overlay
                     VStack {
                         Spacer()
-                        HStack {
+                        HStack(alignment: .bottom) {
                             VStack(spacing: 12) {
                                 // Focus on GPX track button
                                 Button(action: {
@@ -318,10 +342,17 @@ struct ContentView: View {
                                         .clipShape(Circle())
                                         .shadow(radius: 2)
                                 }
-                                // ...existing zoom buttons...
                             }
                             .padding(.leading, 18)
                             .padding(.bottom, 32)
+                            Spacer()
+                            if viewModel.isTracking, let info = viewModel.runnerInfo {
+                                RunnerInfoCard(info: info)
+                                    .padding(.bottom, 36)
+                                    .padding(.horizontal, 8)
+                                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                                    .zIndex(2)
+                            }
                             Spacer()
                             VStack(spacing: 12) {
                                 Button(action: { zoom(factor: 0.5) }) {
@@ -468,6 +499,12 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         isTracking = false
         manager.stopUpdatingLocation()
         stopUploadTimer()
+        // Clear runner info when tracking stops
+        if let appVM = UIApplication.shared.connectedScenes
+            .compactMap({ ($0 as? UIWindowScene)?.windows.first?.rootViewController as? UIHostingController<ContentView> })
+            .first?.rootView.viewModel {
+            appVM.runnerInfo = nil
+        }
     }
     func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
         guard let loc = locations.last else { return }
@@ -534,6 +571,34 @@ struct GPXParser {
             }
         }
         return coords;
+    }
+}
+
+struct RunnerInfoCard: View {
+    let info: RunnerInfo
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Image(systemName: "person.fill")
+                    .foregroundColor(Color.purple)
+                Text("\(info.firstName) \(info.lastName)")
+                    .font(.headline)
+            }
+            HStack {
+                Image(systemName: "flag.fill")
+                    .foregroundColor(.secondary)
+                Text(info.eventName)
+            }
+        }
+        .padding(.vertical, 10)
+        .padding(.horizontal, 18)
+        .background(.ultraThinMaterial)
+        .cornerRadius(16)
+        .shadow(radius: 8)
+        .overlay(
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(Color.purple.opacity(0.3), lineWidth: 1)
+        )
     }
 }
 
