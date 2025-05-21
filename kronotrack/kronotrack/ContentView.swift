@@ -233,23 +233,43 @@ struct MapPolylineView: UIViewRepresentable {
         mapView.isZoomEnabled = true
         mapView.isScrollEnabled = true
         mapView.setRegion(region, animated: false)
+        // Add OpenTopoMap tile overlay ONCE here only
+        let overlay = MKTileOverlay(urlTemplate: "https://tile.opentopomap.org/{z}/{x}/{y}.png")
+        overlay.canReplaceMapContent = true
+        mapView.addOverlay(overlay, level: .aboveRoads)
         return mapView
     }
 
     func updateUIView(_ mapView: MKMapView, context: Context) {
-        mapView.removeOverlays(mapView.overlays)
-        // Draw polyline if we have enough points
+        // Only remove and add polylines, NOT the tile overlay
+        let overlaysToRemove = mapView.overlays.filter { !($0 is MKTileOverlay) }
+        mapView.removeOverlays(overlaysToRemove)
         if coordinates.count > 1 {
-            let polyline = MKPolyline(coordinates: coordinates, count: coordinates.count)
-            mapView.addOverlay(polyline)
+            let glowPolyline = MKPolyline(coordinates: coordinates, count: coordinates.count)
+            glowPolyline.title = "glow"
+            mapView.addOverlay(glowPolyline, level: .aboveLabels)
+            let mainPolyline = MKPolyline(coordinates: coordinates, count: coordinates.count)
+            mainPolyline.title = "main"
+            mapView.addOverlay(mainPolyline, level: .aboveLabels)
         }
-        // Update region if changed
-        if mapView.region.center.latitude != region.center.latitude ||
-            mapView.region.center.longitude != region.center.longitude ||
-            mapView.region.span.latitudeDelta != region.span.latitudeDelta ||
-            mapView.region.span.longitudeDelta != region.span.longitudeDelta {
+        // ...existing code for zoom restriction and logging...
+        let maxZoomDelta = 180.0 / pow(2.0, 15.0)
+        let minZoomDelta = 180.0 / pow(2.0, 0.0)
+        let minSpan = maxZoomDelta
+        let maxSpan = minZoomDelta
+        var regionToSet = region
+        regionToSet.span.latitudeDelta = min(max(region.span.latitudeDelta, minSpan), maxSpan)
+        regionToSet.span.longitudeDelta = min(max(region.span.longitudeDelta, minSpan), maxSpan)
+        let zoomLat = log2(180.0 / regionToSet.span.latitudeDelta)
+        let zoomLon = log2(180.0 / regionToSet.span.longitudeDelta)
+        let zoomLevel = min(zoomLat, zoomLon)
+        // print("[Map] Current zoom level: z=\(zoomLevel)")
+        if mapView.region.center.latitude != regionToSet.center.latitude ||
+            mapView.region.center.longitude != regionToSet.center.longitude ||
+            mapView.region.span.latitudeDelta != regionToSet.span.latitudeDelta ||
+            mapView.region.span.longitudeDelta != regionToSet.span.longitudeDelta {
             context.coordinator.isProgrammaticRegionChange = true
-            mapView.setRegion(region, animated: true)
+            mapView.setRegion(regionToSet, animated: true)
         }
         // Remove custom user location annotation: rely on showsUserLocation for blue dot
     }
@@ -272,13 +292,25 @@ struct MapPolylineView: UIViewRepresentable {
             region.wrappedValue = mapView.region
         }
         func mapView(_ mapView: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
+            if let tileOverlay = overlay as? MKTileOverlay {
+                return MKTileOverlayRenderer(tileOverlay: tileOverlay)
+            }
             if let polyline = overlay as? MKPolyline {
-                let renderer = MKPolylineRenderer(polyline: polyline)
-                renderer.strokeColor = UIColor(red: 174/255, green: 94/255, blue: 255/255, alpha: 1.0) // Purple
-                renderer.lineWidth = 6
-                renderer.lineJoin = .round
-                renderer.lineCap = .round
-                return renderer
+                if polyline.title == "glow" {
+                    let renderer = MKPolylineRenderer(polyline: polyline)
+                    renderer.strokeColor = UIColor.white.withAlphaComponent(0.55)
+                    renderer.lineWidth = 10
+                    renderer.lineJoin = .round
+                    renderer.lineCap = .round
+                    return renderer
+                } else if polyline.title == "main" {
+                    let renderer = MKPolylineRenderer(polyline: polyline)
+                    renderer.strokeColor = UIColor(red: 120/255, green: 0.7, blue: 1.0, alpha: 1.0) // Bright purple/indigo
+                    renderer.lineWidth = 4
+                    renderer.lineJoin = .round
+                    renderer.lineCap = .round
+                    return renderer
+                }
             }
             return MKOverlayRenderer(overlay: overlay)
         }
@@ -293,8 +325,12 @@ struct ContentView: View {
     @State private var mapSpan: MKCoordinateSpan = MKCoordinateSpan(latitudeDelta: 0.01, longitudeDelta: 0.01)
 
     private func zoom(factor: Double) {
-        let newLat = max(0.0005, min(80, viewModel.mapRegion.span.latitudeDelta * factor))
-        let newLon = max(0.0005, min(80, viewModel.mapRegion.span.longitudeDelta * factor))
+        let maxZoomDelta = 180.0 / pow(2.0, 19.0) // ~0.000343
+        let minZoomDelta = 180.0 / pow(2.0, 0.0)  // 180.0 (whole world)
+        let minSpan = maxZoomDelta
+        let maxSpan = minZoomDelta
+        let newLat = min(max(viewModel.mapRegion.span.latitudeDelta * factor, minSpan), maxSpan)
+        let newLon = min(max(viewModel.mapRegion.span.longitudeDelta * factor, minSpan), maxSpan)
         viewModel.mapRegion.span = MKCoordinateSpan(latitudeDelta: newLat, longitudeDelta: newLon)
     }
 
@@ -405,7 +441,7 @@ struct ContentView: View {
                                     .textFieldStyle(.roundedBorder)
                                     .onChange(of: viewModel.code) { newValue in
                                         // Only allow up to 6 characters
-                                        if newValue.count > 6 {
+                                        if (newValue.count > 6) {
                                             viewModel.code = String(newValue.prefix(6))
                                         }
                                     }
