@@ -42,9 +42,15 @@ struct RunnerInfo {
 class AppViewModel: ObservableObject {
     @Published var courses: [Course] = []
     @Published var selectedCourse: Course? = nil
-    @Published var bib: String = ""
-    @Published var birthYear: String = ""
-    @Published var code: String = ""
+    @Published var bib: String = UserDefaults.standard.string(forKey: "bib") ?? "" {
+        didSet { UserDefaults.standard.set(bib, forKey: "bib") }
+    }
+    @Published var birthYear: String = UserDefaults.standard.string(forKey: "birthYear") ?? "" {
+        didSet { UserDefaults.standard.set(birthYear, forKey: "birthYear") }
+    }
+    @Published var code: String = UserDefaults.standard.string(forKey: "code") ?? "" {
+        didSet { UserDefaults.standard.set(code, forKey: "code") }
+    }
     @Published var isTracking: Bool = false
     @Published var mapRegion = MKCoordinateRegion(center: CLLocationCoordinate2D(latitude: 48.858844, longitude: 2.294351), span: MKCoordinateSpan(latitudeDelta: 0.01, longitudeDelta: 0.01))
     @Published var gpxCoordinates: [GPXPoint] = []
@@ -148,16 +154,16 @@ class AppViewModel: ObservableObject {
                 "birth_year": Int(self.birthYear) ?? self.birthYear, // send as Int if possible
                 "code": self.code
             ]
-            print("Krono payload: \(payload)") // DEBUG: print payload
+            // print("Krono payload: \(payload)") // DEBUG: print payload
             req.httpBody = try? JSONSerialization.data(withJSONObject: payload)
             URLSession.shared.dataTask(with: req) { data, response, error in
                 DispatchQueue.main.async {
                     self.isLoading = false
                 }
                 // DEBUG: print server response
-                if let data = data, let str = String(data: data, encoding: .utf8) {
-                    print("Krono response: \(str)")
-                }
+                // if let data = data, let str = String(data: data, encoding: .utf8) {
+                //     print("Krono response: \(str)")
+                // }
                 guard let data = data, error == nil,
                       let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
                     DispatchQueue.main.async {
@@ -233,37 +239,16 @@ struct MapPolylineView: UIViewRepresentable {
         mapView.isZoomEnabled = true
         mapView.isScrollEnabled = true
         mapView.setRegion(region, animated: false)
-        // Add OpenTopoMap tile overlay ONCE here only
-        let overlay = MKTileOverlay(urlTemplate: "https://tile.opentopomap.org/{z}/{x}/{y}.png")
-        overlay.canReplaceMapContent = true
-        mapView.addOverlay(overlay, level: .aboveRoads)
+        // Add overlays initially if coordinates exist
+        context.coordinator.updateOverlaysIfNeeded(on: mapView, newCoordinates: coordinates)
         return mapView
     }
 
     func updateUIView(_ mapView: MKMapView, context: Context) {
-        // Only remove and add polylines, NOT the tile overlay
-        let overlaysToRemove = mapView.overlays.filter { !($0 is MKTileOverlay) }
-        mapView.removeOverlays(overlaysToRemove)
-        if coordinates.count > 1 {
-            let glowPolyline = MKPolyline(coordinates: coordinates, count: coordinates.count)
-            glowPolyline.title = "glow"
-            mapView.addOverlay(glowPolyline, level: .aboveLabels)
-            let mainPolyline = MKPolyline(coordinates: coordinates, count: coordinates.count)
-            mainPolyline.title = "main"
-            mapView.addOverlay(mainPolyline, level: .aboveLabels)
-        }
-        // ...existing code for zoom restriction and logging...
-        let maxZoomDelta = 180.0 / pow(2.0, 15.0)
-        let minZoomDelta = 180.0 / pow(2.0, 0.0)
-        let minSpan = maxZoomDelta
-        let maxSpan = minZoomDelta
-        var regionToSet = region
-        regionToSet.span.latitudeDelta = min(max(region.span.latitudeDelta, minSpan), maxSpan)
-        regionToSet.span.longitudeDelta = min(max(region.span.longitudeDelta, minSpan), maxSpan)
-        let zoomLat = log2(180.0 / regionToSet.span.latitudeDelta)
-        let zoomLon = log2(180.0 / regionToSet.span.longitudeDelta)
-        let zoomLevel = min(zoomLat, zoomLon)
-        // print("[Map] Current zoom level: z=\(zoomLevel)")
+        // Only update overlays if coordinates changed
+        context.coordinator.updateOverlaysIfNeeded(on: mapView, newCoordinates: coordinates)
+        // Remove zoom restriction logic
+        let regionToSet = region
         if mapView.region.center.latitude != regionToSet.center.latitude ||
             mapView.region.center.longitude != regionToSet.center.longitude ||
             mapView.region.span.latitudeDelta != regionToSet.span.latitudeDelta ||
@@ -281,8 +266,24 @@ struct MapPolylineView: UIViewRepresentable {
     class Coordinator: NSObject, MKMapViewDelegate {
         var region: Binding<MKCoordinateRegion>
         var isProgrammaticRegionChange = false
+        private var lastCoordinates: [CLLocationCoordinate2D] = []
         init(region: Binding<MKCoordinateRegion>) {
             self.region = region
+        }
+        func updateOverlaysIfNeeded(on mapView: MKMapView, newCoordinates: [CLLocationCoordinate2D]) {
+            guard newCoordinates != lastCoordinates else { return }
+            // Remove all polylines (but not tile overlays)
+            let overlaysToRemove = mapView.overlays.filter { !($0 is MKTileOverlay) }
+            mapView.removeOverlays(overlaysToRemove)
+            if newCoordinates.count > 1 {
+                let glowPolyline = MKPolyline(coordinates: newCoordinates, count: newCoordinates.count)
+                glowPolyline.title = "glow"
+                mapView.addOverlay(glowPolyline, level: .aboveLabels)
+                let mainPolyline = MKPolyline(coordinates: newCoordinates, count: newCoordinates.count)
+                mainPolyline.title = "main"
+                mapView.addOverlay(mainPolyline, level: .aboveLabels)
+            }
+            lastCoordinates = newCoordinates
         }
         func mapView(_ mapView: MKMapView, regionDidChangeAnimated animated: Bool) {
             if isProgrammaticRegionChange {
@@ -292,9 +293,9 @@ struct MapPolylineView: UIViewRepresentable {
             region.wrappedValue = mapView.region
         }
         func mapView(_ mapView: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
-            if let tileOverlay = overlay as? MKTileOverlay {
-                return MKTileOverlayRenderer(tileOverlay: tileOverlay)
-            }
+            // if let tileOverlay = overlay as? MKTileOverlay {
+            //     return MKTileOverlayRenderer(tileOverlay: tileOverlay)
+            // }
             if let polyline = overlay as? MKPolyline {
                 if polyline.title == "glow" {
                     let renderer = MKPolylineRenderer(polyline: polyline)
@@ -323,15 +324,17 @@ struct ContentView: View {
     @State private var showingAlert = false
     // Add a state for map zoom
     @State private var mapSpan: MKCoordinateSpan = MKCoordinateSpan(latitudeDelta: 0.01, longitudeDelta: 0.01)
+    @FocusState private var focusedField: Int?
 
     private func zoom(factor: Double) {
-        let maxZoomDelta = 180.0 / pow(2.0, 19.0) // ~0.000343
-        let minZoomDelta = 180.0 / pow(2.0, 0.0)  // 180.0 (whole world)
-        let minSpan = maxZoomDelta
-        let maxSpan = minZoomDelta
-        let newLat = min(max(viewModel.mapRegion.span.latitudeDelta * factor, minSpan), maxSpan)
-        let newLon = min(max(viewModel.mapRegion.span.longitudeDelta * factor, minSpan), maxSpan)
+        // Remove zoom limiting logic
+        let newLat = viewModel.mapRegion.span.latitudeDelta * factor
+        let newLon = viewModel.mapRegion.span.longitudeDelta * factor
         viewModel.mapRegion.span = MKCoordinateSpan(latitudeDelta: newLat, longitudeDelta: newLon)
+    }
+
+    private func dismissKeyboard() {
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
     }
 
     var body: some View {
@@ -425,9 +428,11 @@ struct ContentView: View {
                                 TextField(NSLocalizedString("Bib Number", comment: "Bib input"), text: $viewModel.bib)
                                     .keyboardType(.numberPad)
                                     .textFieldStyle(.roundedBorder)
+                                    .focused($focusedField, equals: 1)
                                 TextField(NSLocalizedString("Birth Year", comment: "Birth year input"), text: $viewModel.birthYear)
                                     .keyboardType(.numberPad)
                                     .textFieldStyle(.roundedBorder)
+                                    .focused($focusedField, equals: 2)
                                     .onChange(of: viewModel.birthYear) { newValue in
                                         // Only allow up to 4 digits
                                         let filtered = newValue.filter { $0.isNumber }
@@ -439,6 +444,7 @@ struct ContentView: View {
                                     }
                                 TextField(NSLocalizedString("Race Code", comment: "Race code input"), text: $viewModel.code)
                                     .textFieldStyle(.roundedBorder)
+                                    .focused($focusedField, equals: 3)
                                     .onChange(of: viewModel.code) { newValue in
                                         // Only allow up to 6 characters
                                         if (newValue.count > 6) {
@@ -447,6 +453,7 @@ struct ContentView: View {
                                     }
                             }
                             Button(viewModel.isTracking ? NSLocalizedString("Stop Tracking", comment: "Stop tracking button") : NSLocalizedString("Start Tracking", comment: "Start tracking button")) {
+                                dismissKeyboard()
                                 if viewModel.isTracking {
                                     locationManager.stopTracking()
                                     viewModel.isTracking = false
@@ -476,6 +483,10 @@ struct ContentView: View {
                     }
                 }
             }
+            .contentShape(Rectangle())
+            .onTapGesture {
+                dismissKeyboard()
+            }
             .navigationTitle(NSLocalizedString("KronoTrack", comment: "App title"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -504,37 +515,51 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
     private let manager = CLLocationManager()
     @Published var userLocation: CLLocationCoordinate2D? = nil
     @Published var isTracking: Bool = false
-    private var uploadTimer: Timer?
     private var lastUpload: Date? = nil
+    private var backgroundTask: UIBackgroundTaskIdentifier = .invalid
+    private let uploadInterval: TimeInterval = 60 // seconds
     override init() {
         super.init()
-// #if !targetEnvironment(simulator)
         manager.allowsBackgroundLocationUpdates = true
-// #endif
         manager.delegate = self
         manager.pausesLocationUpdatesAutomatically = false
+        manager.desiredAccuracy = kCLLocationAccuracyBest
+        manager.distanceFilter = kCLDistanceFilterNone
+        // Removed notification observers and isInBackground logic
     }
     func requestPermissions(completion: ((Bool) -> Void)? = nil) {
-        manager.requestAlwaysAuthorization()
+        let status = CLLocationManager.authorizationStatus()
+        if status == .notDetermined {
+            manager.requestWhenInUseAuthorization()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) {
+                self.requestPermissions(completion: completion)
+            }
+            return
+        } else if status == .authorizedWhenInUse {
+            manager.requestAlwaysAuthorization()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) {
+                self.requestPermissions(completion: completion)
+            }
+            return
+        }
         NotificationManager.shared.requestPermissions()
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-// #if targetEnvironment(simulator)
-            completion?(true)
-// #else
-            let status = CLLocationManager.authorizationStatus()
-            completion?(status == .authorizedAlways || status == .authorizedWhenInUse)
-// #endif
+            let newStatus = CLLocationManager.authorizationStatus()
+            completion?(newStatus == .authorizedAlways)
         }
     }
     func startTracking() {
         isTracking = true
         manager.startUpdatingLocation()
-        startUploadTimer()
     }
     func stopTracking() {
         isTracking = false
         manager.stopUpdatingLocation()
-        stopUploadTimer()
+        // End any background task if running
+        if backgroundTask != .invalid {
+            UIApplication.shared.endBackgroundTask(backgroundTask)
+            backgroundTask = .invalid
+        }
         // Clear runner info when tracking stops
         if let appVM = UIApplication.shared.connectedScenes
             .compactMap({ ($0 as? UIWindowScene)?.windows.first?.rootViewController as? UIHostingController<ContentView> })
@@ -547,35 +572,60 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         DispatchQueue.main.async {
             self.userLocation = loc.coordinate
         }
-    }
-    private func startUploadTimer() {
-        uploadTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
-            self?.uploadLocation()
+        // Throttle uploads to once per 60s
+        let now = Date()
+        if let last = lastUpload, now.timeIntervalSince(last) < uploadInterval {
+            print("[LocationManager] Skipping upload, last upload was \(now.timeIntervalSince(last))s ago")
+            return
         }
+        lastUpload = now
+        uploadLocation(location: loc)
     }
-    private func stopUploadTimer() {
-        uploadTimer?.invalidate()
-        uploadTimer = nil
-    }
-    private func uploadLocation() {
-        guard let coord = userLocation else { return }
-        // TODO: Add bib, birthYear, code, course, and server endpoint
+    private func uploadLocation(location: CLLocation) {
+        // Use the same API and payload as Android LocationService.kt
+        print("will try to upload location")
+        let token = "RyZpcmUpdU9jKz14cjA9e2wqMnF3WSRmNThDOmU4b3IqRjAvLTszMVorRV9DbUNiRihneSl7b1F9JH01c2ItVw"
+        guard let appVM = UIApplication.shared.connectedScenes
+            .compactMap({ ($0 as? UIWindowScene)?.windows.first?.rootViewController as? UIHostingController<ContentView> })
+            .first?.rootView.viewModel else { return }
+        guard let course = appVM.selectedCourse else { return }
+        let bibNumber = Int(appVM.bib) ?? 0
+        let mainEvent = course.id
+        let timestamp = Int64(location.timestamp.timeIntervalSince1970 * 1000) // ms since epoch
+        let accuracy = location.horizontalAccuracy
         let payload: [String: Any] = [
-            "lat": coord.latitude,
-            "lon": coord.longitude,
-            "timestamp": Date().timeIntervalSince1970,
-            "bib": AppViewModel().bib,
-            "birthYear": AppViewModel().birthYear,
-            "code": AppViewModel().code,
-            "courseId": AppViewModel().selectedCourse?.id ?? ""
+            "token": token,
+            "bib_number": bibNumber,
+            "latitude": location.coordinate.latitude,
+            "longitude": location.coordinate.longitude,
+            "main_event": mainEvent,
+            "timestamp": timestamp,
+            "accuracy": accuracy
         ]
-        guard let url = URL(string: "https://krono.timing.server/api/location") else { return }
+        guard let url = URL(string: "https://track.kronotiming.fr/update-location") else { return }
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.httpBody = try? JSONSerialization.data(withJSONObject: payload)
-        URLSession.shared.dataTask(with: req) { _, _, _ in }.resume()
-        lastUpload = Date()
+        print("[LocationUpload] Payload: \(payload)")
+        // Start background task
+        backgroundTask = UIApplication.shared.beginBackgroundTask(withName: "LocationUpload") {
+            // Cleanup if time expires
+            UIApplication.shared.endBackgroundTask(self.backgroundTask)
+            self.backgroundTask = .invalid
+        }
+        URLSession.shared.dataTask(with: req) { data, response, error in
+            if let error = error {
+                print("[LocationUpload] Error: \(error)")
+            } else if let httpResp = response as? HTTPURLResponse {
+                print("[LocationUpload] Response: \(httpResp.statusCode)")
+            }
+            // End background task
+            if self.backgroundTask != .invalid {
+                UIApplication.shared.endBackgroundTask(self.backgroundTask)
+                self.backgroundTask = .invalid
+            }
+        }.resume()
     }
 }
 
@@ -635,6 +685,12 @@ struct RunnerInfoCard: View {
             RoundedRectangle(cornerRadius: 16)
                 .stroke(Color.purple.opacity(0.3), lineWidth: 1)
         )
+    }
+}
+
+extension CLLocationCoordinate2D: Equatable {
+    public static func == (lhs: CLLocationCoordinate2D, rhs: CLLocationCoordinate2D) -> Bool {
+        lhs.latitude == rhs.latitude && lhs.longitude == rhs.longitude
     }
 }
 
