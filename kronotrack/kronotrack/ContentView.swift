@@ -58,6 +58,35 @@ class AppViewModel: ObservableObject {
     @Published var isLoading: Bool = false
     @Published var errorMessage: String? = nil
     @Published var runnerInfo: RunnerInfo? = nil
+    
+    // Callback for region changes that need to be animated through programmatic ID
+    var notifyRegionChange: ((MKCoordinateRegion) -> Void)?
+
+    /// Returns the region that fits the given GPX points with padding and minimum span
+    static func regionForGPXTrack(_ coords: [GPXPoint]) -> MKCoordinateRegion? {
+        guard !coords.isEmpty else { return nil }
+        var minLat = coords.first!.coordinate.latitude
+        var maxLat = coords.first!.coordinate.latitude
+        var minLon = coords.first!.coordinate.longitude
+        var maxLon = coords.first!.coordinate.longitude
+        for pt in coords {
+            minLat = min(minLat, pt.coordinate.latitude)
+            maxLat = max(maxLat, pt.coordinate.latitude)
+            minLon = min(minLon, pt.coordinate.longitude)
+            maxLon = max(maxLon, pt.coordinate.longitude)
+        }
+        let latDelta = maxLat - minLat
+        let lonDelta = maxLon - minLon
+        let latPad = latDelta * 0.2
+        let lonPad = lonDelta * 0.2
+        let center = CLLocationCoordinate2D(latitude: (minLat + maxLat) / 2, longitude: (minLon + maxLon) / 2)
+        let minSpan = 0.002
+        let span = MKCoordinateSpan(
+            latitudeDelta: max(latDelta + 2 * latPad, minSpan),
+            longitudeDelta: max(lonDelta + 2 * lonPad, minSpan)
+        )
+        return MKCoordinateRegion(center: center, span: span)
+    }
 
     func fetchCourses() {
         guard let url = URL(string: "https://track.kronotiming.fr/events") else { return }
@@ -83,32 +112,15 @@ class AppViewModel: ObservableObject {
         }.resume()
     }
     func setRegionForTrack(_ coords: [GPXPoint]) {
-        guard !coords.isEmpty else { return }
-        var minLat = coords.first!.coordinate.latitude
-        var maxLat = coords.first!.coordinate.latitude
-        var minLon = coords.first!.coordinate.longitude
-        var maxLon = coords.first!.coordinate.longitude
-        for pt in coords {
-            minLat = min(minLat, pt.coordinate.latitude)
-            maxLat = max(maxLat, pt.coordinate.latitude)
-            minLon = min(minLon, pt.coordinate.longitude)
-            maxLon = max(maxLon, pt.coordinate.longitude)
-        }
-        // Improved padding: 20% on each side (total 40%)
-        let latDelta = maxLat - minLat
-        let lonDelta = maxLon - minLon
-        let latPad = latDelta * 0.2
-        let lonPad = lonDelta * 0.2
-        let center = CLLocationCoordinate2D(latitude: (minLat + maxLat) / 2, longitude: (minLon + maxLon) / 2)
-        // Ensure a minimum span so the map doesn't zoom in too much
-        let minSpan = 0.002
-        let span = MKCoordinateSpan(
-            latitudeDelta: max(latDelta + 2 * latPad, minSpan),
-            longitudeDelta: max(lonDelta + 2 * lonPad, minSpan)
-        )
-        DispatchQueue.main.async {
-            withAnimation {
-                self.mapRegion = MKCoordinateRegion(center: center, span: span)
+        guard let region = Self.regionForGPXTrack(coords) else { return }
+        if let notifyRegionChange = self.notifyRegionChange {
+            notifyRegionChange(region)
+        } else {
+            // Fallback if callback is not set
+            DispatchQueue.main.async {
+                withAnimation {
+                    self.mapRegion = region
+                }
             }
         }
     }
@@ -132,6 +144,8 @@ class AppViewModel: ObservableObject {
             completion(false)
             return
         }
+        // Store selected course id to UserDefaults for background access
+        UserDefaults.standard.set(course.id, forKey: "main_event")
         // 2. Request notification and location permissions
         NotificationManager.shared.requestPermissions()
         locationManager.requestPermissions { granted in
@@ -154,16 +168,11 @@ class AppViewModel: ObservableObject {
                 "birth_year": Int(self.birthYear) ?? self.birthYear, // send as Int if possible
                 "code": self.code
             ]
-            // print("Krono payload: \(payload)") // DEBUG: print payload
             req.httpBody = try? JSONSerialization.data(withJSONObject: payload)
             URLSession.shared.dataTask(with: req) { data, response, error in
                 DispatchQueue.main.async {
                     self.isLoading = false
                 }
-                // DEBUG: print server response
-                // if let data = data, let str = String(data: data, encoding: .utf8) {
-                //     print("Krono response: \(str)")
-                // }
                 guard let data = data, error == nil,
                       let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
                     DispatchQueue.main.async {
@@ -179,7 +188,6 @@ class AppViewModel: ObservableObject {
                     completion(false)
                     return
                 }
-                // 4. Parse track points from response (array of [lat, lon])
                 if let trackArr = obj["track"] as? [[Any]] {
                     let coords: [GPXPoint] = trackArr.compactMap { arr in
                         if arr.count == 2, let lat = arr[0] as? Double, let lon = arr[1] as? Double {
@@ -189,11 +197,13 @@ class AppViewModel: ObservableObject {
                     }
                     DispatchQueue.main.async {
                         self.gpxCoordinates = coords
-                        self.setRegionForTrack(coords)
                         self.errorMessage = nil
+                        // --- Jump to GPX track region when starting tracking ---
+                        if let region = Self.regionForGPXTrack(coords) {
+                            self.notifyRegionChange?(region)
+                        }
                     }
                 }
-                // 4b. Parse runner info if present
                 let firstName = obj["firstName"] as? String ?? ""
                 let lastName = obj["lastName"] as? String ?? ""
                 let eventName = obj["eventName"] as? String ?? self.selectedCourse?.name ?? ""
@@ -207,11 +217,9 @@ class AppViewModel: ObservableObject {
                         code: self.code
                     )
                 }
-                // 5. Mark as tracking
                 DispatchQueue.main.async {
                     self.isTracking = true
                 }
-                // 6. Start location updates
                 DispatchQueue.main.async {
                     locationManager.startTracking()
                 }
@@ -228,6 +236,9 @@ struct MapPolylineView: UIViewRepresentable {
     var coordinates: [CLLocationCoordinate2D]
     var userLocation: CLLocationCoordinate2D?
     @Binding var region: MKCoordinateRegion
+    var isMapInteractionEnabled: Bool = true // new property
+    var onUserInteraction: (() -> Void)? = nil // new property
+    var programmaticRegionChangeID: UUID = UUID() // new property
 
     func makeUIView(context: Context) -> MKMapView {
         let mapView = MKMapView()
@@ -236,8 +247,8 @@ struct MapPolylineView: UIViewRepresentable {
         mapView.isRotateEnabled = false
         mapView.isPitchEnabled = false
         mapView.pointOfInterestFilter = .excludingAll
-        mapView.isZoomEnabled = true
-        mapView.isScrollEnabled = true
+        mapView.isZoomEnabled = isMapInteractionEnabled
+        mapView.isScrollEnabled = isMapInteractionEnabled
         mapView.setRegion(region, animated: false)
         // Add overlays initially if coordinates exist
         context.coordinator.updateOverlaysIfNeeded(on: mapView, newCoordinates: coordinates)
@@ -247,29 +258,43 @@ struct MapPolylineView: UIViewRepresentable {
     func updateUIView(_ mapView: MKMapView, context: Context) {
         // Only update overlays if coordinates changed
         context.coordinator.updateOverlaysIfNeeded(on: mapView, newCoordinates: coordinates)
-        // Remove zoom restriction logic
-        let regionToSet = region
-        if mapView.region.center.latitude != regionToSet.center.latitude ||
-            mapView.region.center.longitude != regionToSet.center.longitude ||
-            mapView.region.span.latitudeDelta != regionToSet.span.latitudeDelta ||
-            mapView.region.span.longitudeDelta != regionToSet.span.longitudeDelta {
+        // Detect programmaticRegionChangeID change to trigger region update
+        if context.coordinator.lastProgrammaticRegionChangeID != programmaticRegionChangeID {
             context.coordinator.isProgrammaticRegionChange = true
-            mapView.setRegion(regionToSet, animated: true)
+            context.coordinator.lastProgrammaticRegionChangeID = programmaticRegionChangeID
+        }
+        // Only set region if a programmatic change is requested
+        if context.coordinator.isProgrammaticRegionChange {
+            let regionToSet = region
+            if mapView.region.center.latitude != regionToSet.center.latitude ||
+                mapView.region.center.longitude != regionToSet.center.longitude ||
+                mapView.region.span.latitudeDelta != regionToSet.span.latitudeDelta ||
+                mapView.region.span.longitudeDelta != regionToSet.span.longitudeDelta {
+                mapView.setRegion(regionToSet, animated: true)
+            }
+            context.coordinator.isProgrammaticRegionChange = false
         }
         // Remove custom user location annotation: rely on showsUserLocation for blue dot
+        mapView.isZoomEnabled = isMapInteractionEnabled
+        mapView.isScrollEnabled = isMapInteractionEnabled
     }
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(region: $region)
+        Coordinator(region: $region, onUserInteraction: onUserInteraction)
     }
 
     class Coordinator: NSObject, MKMapViewDelegate {
         var region: Binding<MKCoordinateRegion>
         var isProgrammaticRegionChange = false
+        var lastProgrammaticRegionChangeID: UUID? = nil // <--- add this
         private var lastCoordinates: [CLLocationCoordinate2D] = []
-        init(region: Binding<MKCoordinateRegion>) {
+        var onUserInteraction: (() -> Void)? = nil
+
+        init(region: Binding<MKCoordinateRegion>, onUserInteraction: (() -> Void)? = nil) {
             self.region = region
+            self.onUserInteraction = onUserInteraction
         }
+
         func updateOverlaysIfNeeded(on mapView: MKMapView, newCoordinates: [CLLocationCoordinate2D]) {
             guard newCoordinates != lastCoordinates else { return }
             // Remove all polylines (but not tile overlays)
@@ -285,13 +310,16 @@ struct MapPolylineView: UIViewRepresentable {
             }
             lastCoordinates = newCoordinates
         }
+
         func mapView(_ mapView: MKMapView, regionDidChangeAnimated animated: Bool) {
             if isProgrammaticRegionChange {
                 isProgrammaticRegionChange = false
                 return
             }
             region.wrappedValue = mapView.region
+            onUserInteraction?()
         }
+
         func mapView(_ mapView: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
             // if let tileOverlay = overlay as? MKTileOverlay {
             //     return MKTileOverlayRenderer(tileOverlay: tileOverlay)
@@ -316,107 +344,85 @@ struct MapPolylineView: UIViewRepresentable {
             return MKOverlayRenderer(overlay: overlay)
         }
     }
+
+    static func setNextProgrammaticRegionChange() {
+        // This function can be used to set a flag for the next programmatic region change
+    }
 }
 
 struct ContentView: View {
     @StateObject var viewModel = AppViewModel()
     @StateObject var locationManager = LocationManager()
     @State private var showingAlert = false
-    // Add a state for map zoom
     @State private var mapSpan: MKCoordinateSpan = MKCoordinateSpan(latitudeDelta: 0.01, longitudeDelta: 0.01)
     @FocusState private var focusedField: Int?
-
-    private func zoom(factor: Double) {
-        // Remove zoom limiting logic
-        let newLat = viewModel.mapRegion.span.latitudeDelta * factor
-        let newLon = viewModel.mapRegion.span.longitudeDelta * factor
-        viewModel.mapRegion.span = MKCoordinateSpan(latitudeDelta: newLat, longitudeDelta: newLon)
+    @State private var isAutoNavigating = false
+    @State private var autoNavTimer: Timer? = nil
+    @State private var programmaticRegionChangeID = UUID() // triggers region change
+    
+    init() {
+        let vm = AppViewModel()
+        _viewModel = StateObject(wrappedValue: vm)
+        // Connect the view model's region change notification to our jumpToRegion function
+        vm.notifyRegionChange = { [weak vm] region in
+            guard let vm = vm else { return }
+            // We need to access self (ContentView), but we can't do that directly in init
+            // We'll use a DispatchQueue to break the reference cycle
+            DispatchQueue.main.async {
+                NotificationCenter.default.post(name: NSNotification.Name("JumpToRegion"), object: region)
+            }
+        }
     }
 
     private func dismissKeyboard() {
         UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
     }
 
+    private func jumpToRegion(_ region: MKCoordinateRegion) {
+        isAutoNavigating = true
+        programmaticRegionChangeID = UUID() // force update
+        viewModel.mapRegion = region
+        autoNavTimer?.invalidate()
+        autoNavTimer = Timer.scheduledTimer(withTimeInterval: 1.5, repeats: false) { _ in
+            isAutoNavigating = false
+        }
+    }
+
     var body: some View {
         NavigationView {
-            VStack(spacing: 0) {
-                ZStack(alignment: .top) {
-                    // Use MapPolylineView instead of Map
-                    MapPolylineView(coordinates: viewModel.gpxCoordinates.map { $0.coordinate }, userLocation: locationManager.userLocation, region: $viewModel.mapRegion)
-                        .edgesIgnoringSafeArea(.all)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .onAppear {
-                            // Sync initial span
-                            mapSpan = viewModel.mapRegion.span
+            ZStack(alignment: .top) {
+                MapPolylineView(
+                    coordinates: viewModel.gpxCoordinates.map { $0.coordinate },
+                    userLocation: locationManager.userLocation,
+                    region: $viewModel.mapRegion,
+                    isMapInteractionEnabled: !isAutoNavigating,
+                    onUserInteraction: {
+                        if isAutoNavigating {
+                            isAutoNavigating = false
+                            autoNavTimer?.invalidate()
                         }
-                    // Center on user location button overlay
-                    VStack {
-                        Spacer()
-                        HStack(alignment: .bottom) {
-                            VStack(spacing: 12) {
-                                // Focus on GPX track button
-                                Button(action: {
-                                    viewModel.setRegionForTrack(viewModel.gpxCoordinates)
-                                }) {
-                                    Image(systemName: "point.topleft.down.curvedto.point.bottomright.up")
-                                        .font(.title2)
-                                        .padding(10)
-                                        .background(Color(.systemBackground).opacity(0.85))
-                                        .clipShape(Circle())
-                                        .shadow(radius: 2)
-                                }
-                                // My location button (existing)
-                                Button(action: {
-                                    if let userLoc = locationManager.userLocation {
-                                        print("[DEBUG] Go to my location button tapped. User location: \(userLoc.latitude), \(userLoc.longitude)")
-                                        viewModel.mapRegion = MKCoordinateRegion(center: userLoc, span: viewModel.mapRegion.span)
-                                    } else {
-                                        print("[DEBUG] Go to my location button tapped. User location is nil.")
-                                    }
-                                }) {
-                                    Image(systemName: "location.fill")
-                                        .font(.title2)
-                                        .padding(10)
-                                        .background(Color(.systemBackground).opacity(0.85))
-                                        .clipShape(Circle())
-                                        .shadow(radius: 2)
-                                }
+                    },
+                    programmaticRegionChangeID: programmaticRegionChangeID // new param
+                )
+                .edgesIgnoringSafeArea(.all)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .onAppear {
+                    mapSpan = viewModel.mapRegion.span
+                    
+                    // Set up notification observer for region changes
+                    NotificationCenter.default.addObserver(
+                        forName: NSNotification.Name("JumpToRegion"),
+                        object: nil,
+                        queue: .main) { notification in
+                            if let region = notification.object as? MKCoordinateRegion {
+                                self.jumpToRegion(region)
                             }
-                            .padding(.leading, 18)
-                            .padding(.bottom, 32)
-                            Spacer()
-                            if viewModel.isTracking, let info = viewModel.runnerInfo {
-                                RunnerInfoCard(info: info)
-                                    .padding(.bottom, 36)
-                                    .padding(.horizontal, 8)
-                                    .transition(.move(edge: .bottom).combined(with: .opacity))
-                                    .zIndex(2)
-                            }
-                            Spacer()
-                            VStack(spacing: 12) {
-                                Button(action: { zoom(factor: 0.5) }) {
-                                    Image(systemName: "plus.magnifyingglass")
-                                        .font(.title2)
-                                        .padding(10)
-                                        .background(Color(.systemBackground).opacity(0.85))
-                                        .clipShape(Circle())
-                                        .shadow(radius: 2)
-                                }
-                                Button(action: { zoom(factor: 2.0) }) {
-                                    Image(systemName: "minus.magnifyingglass")
-                                        .font(.title2)
-                                        .padding(10)
-                                        .background(Color(.systemBackground).opacity(0.85))
-                                        .clipShape(Circle())
-                                        .shadow(radius: 2)
-                                }
-                            }
-                            .padding(.trailing, 18)
-                            .padding(.bottom, 32)
                         }
-                    }
-                    // ...existing code for HStack with controls...
-                    HStack { // Add HStack to allow horizontal padding
+                }
+                // Overlay controls and buttons
+                VStack {
+                    // Controls card moved up
+                    HStack {
                         VStack(spacing: 12) {
                             Picker("Course", selection: $viewModel.selectedCourse) {
                                 ForEach(viewModel.courses) { course in
@@ -434,7 +440,6 @@ struct ContentView: View {
                                     .textFieldStyle(.roundedBorder)
                                     .focused($focusedField, equals: 2)
                                     .onChange(of: viewModel.birthYear) { newValue in
-                                        // Only allow up to 4 digits
                                         let filtered = newValue.filter { $0.isNumber }
                                         if filtered.count > 4 {
                                             viewModel.birthYear = String(filtered.prefix(4))
@@ -446,7 +451,6 @@ struct ContentView: View {
                                     .textFieldStyle(.roundedBorder)
                                     .focused($focusedField, equals: 3)
                                     .onChange(of: viewModel.code) { newValue in
-                                        // Only allow up to 6 characters
                                         if (newValue.count > 6) {
                                             viewModel.code = String(newValue.prefix(6))
                                         }
@@ -478,8 +482,92 @@ struct ContentView: View {
                         .background(Color(.systemBackground).opacity(0.85))
                         .cornerRadius(16)
                         .shadow(radius: 8)
-                        .padding(.top, 16)
+                        .padding(.top, 32) // Move up by reducing top padding
                         .padding(.horizontal, 16)
+                    }
+                    Spacer()
+                }
+                // Map overlay buttons (bottom left and right)
+                VStack {
+                    Spacer()
+                    HStack(alignment: .bottom) {
+                        VStack(spacing: 12) {
+                            // Center on GPX track button
+                            Button(action: {
+                                if !viewModel.gpxCoordinates.isEmpty {
+                                    var minLat = viewModel.gpxCoordinates.first!.coordinate.latitude
+                                    var maxLat = minLat
+                                    var minLon = viewModel.gpxCoordinates.first!.coordinate.longitude
+                                    var maxLon = minLon
+                                    for pt in viewModel.gpxCoordinates {
+                                        minLat = min(minLat, pt.coordinate.latitude)
+                                        maxLat = max(maxLat, pt.coordinate.latitude)
+                                        minLon = min(minLon, pt.coordinate.longitude)
+                                        maxLon = max(maxLon, pt.coordinate.longitude)
+                                    }
+                                    let latDelta = maxLat - minLat
+                                    let lonDelta = maxLon - minLon
+                                    let latPad = latDelta * 0.2
+                                    let lonPad = lonDelta * 0.2
+                                    let center = CLLocationCoordinate2D(latitude: (minLat + maxLat) / 2, longitude: (minLon + maxLon) / 2)
+                                    let minSpan = 0.002
+                                    let span = MKCoordinateSpan(
+                                        latitudeDelta: max(latDelta + 2 * latPad, minSpan),
+                                        longitudeDelta: max(lonDelta + 2 * lonPad, minSpan)
+                                    )
+                                    let region = MKCoordinateRegion(center: center, span: span)
+                                    jumpToRegion(region)
+                                }
+                            }) {
+                                Image(systemName: "point.topleft.down.curvedto.point.bottomright.up")
+                                    .font(.title2)
+                                    .padding(10)
+                                    .background(Color(.systemBackground).opacity(0.85))
+                                    .clipShape(Circle())
+                                    .shadow(radius: 2)
+                            }
+                            // Center on user location button
+                            Button(action: {
+                                if let userLoc = locationManager.userLocation {
+                                    let region = MKCoordinateRegion(center: userLoc, span: viewModel.mapRegion.span)
+                                    jumpToRegion(region)
+                                }
+                            }) {
+                                Image(systemName: "location.fill")
+                                    .font(.title2)
+                                    .padding(10)
+                                    .background(Color(.systemBackground).opacity(0.85))
+                                    .clipShape(Circle())
+                                    .shadow(radius: 2)
+                            }
+                        }
+                        .padding(.leading, 18)
+                        .padding(.bottom, 32)
+                        Spacer()
+                        if viewModel.isTracking, let info = viewModel.runnerInfo {
+                            RunnerInfoCard(info: info)
+                                .padding(.bottom, 36)
+                                .padding(.horizontal, 8)
+                                .transition(.move(edge: .bottom).combined(with: .opacity))
+                                .zIndex(2)
+                        }
+                        Spacer()
+                        VStack(spacing: 12) {
+                            // Three dots menu button above (zoom buttons removed)
+                            Menu {
+                                Link(NSLocalizedString("Privacy Policy", comment: "Privacy policy link"), destination: URL(string: "https://kronotiming.fr/privacy")!)
+                            } label: {
+                                Image(systemName: "ellipsis")
+                                    .font(.title2)
+                                    .foregroundColor(.white)
+                                    .padding(10)
+                                    .background(Color.black)
+                                    .clipShape(Circle())
+                                    .shadow(radius: 2)
+                            }
+                        }
+                        .padding(.trailing, 18)
+                        .padding(.bottom, 32)
                     }
                 }
             }
@@ -487,26 +575,12 @@ struct ContentView: View {
             .onTapGesture {
                 dismissKeyboard()
             }
-            .navigationTitle(NSLocalizedString("KronoTrack", comment: "App title"))
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Menu {
-                        Link(NSLocalizedString("Privacy Policy", comment: "Privacy policy link"), destination: URL(string: "https://kronotiming.fr/privacy")!)
-                    } label: {
-                        Image(systemName: "ellipsis.circle")
-                    }
-                    if let userLoc = locationManager.userLocation {
-                        Text("\u{1F4CD} ") + Text("\(userLoc.latitude), \(userLoc.longitude)")
-                    }
-                }
+            .onAppear {
+                viewModel.fetchCourses()
             }
-        }
-        .onAppear {
-            viewModel.fetchCourses()
-        }
-        .alert(isPresented: $showingAlert) {
-            Alert(title: Text("Erreur"), message: Text(viewModel.errorMessage ?? "Erreur inconnue"), dismissButton: .default(Text("OK")))
+            .alert(isPresented: $showingAlert) {
+                Alert(title: Text("Erreur"), message: Text(viewModel.errorMessage ?? "Erreur inconnue"), dismissButton: .default(Text("OK")))
+            }
         }
     }
 }
@@ -551,6 +625,7 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
     func startTracking() {
         isTracking = true
         manager.startUpdatingLocation()
+        // No more view model access here
     }
     func stopTracking() {
         isTracking = false
@@ -582,15 +657,18 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         uploadLocation(location: loc)
     }
     private func uploadLocation(location: CLLocation) {
-        // Use the same API and payload as Android LocationService.kt
         print("will try to upload location")
         let token = "RyZpcmUpdU9jKz14cjA9e2wqMnF3WSRmNThDOmU4b3IqRjAvLTszMVorRV9DbUNiRihneSl7b1F9JH01c2ItVw"
-        guard let appVM = UIApplication.shared.connectedScenes
-            .compactMap({ ($0 as? UIWindowScene)?.windows.first?.rootViewController as? UIHostingController<ContentView> })
-            .first?.rootView.viewModel else { return }
-        guard let course = appVM.selectedCourse else { return }
-        let bibNumber = Int(appVM.bib) ?? 0
-        let mainEvent = course.id
+        // Read all required info from UserDefaults
+        let bib = UserDefaults.standard.string(forKey: "bib") ?? ""
+        let birthYear = UserDefaults.standard.string(forKey: "birthYear") ?? ""
+        let code = UserDefaults.standard.string(forKey: "code") ?? ""
+        let mainEvent = UserDefaults.standard.string(forKey: "main_event") ?? ""
+        guard !bib.isEmpty, !birthYear.isEmpty, !code.isEmpty, !mainEvent.isEmpty else {
+            print("[LocationUpload] Missing required info in UserDefaults")
+            return
+        }
+        let bibNumber = Int(bib) ?? 0
         let timestamp = Int64(location.timestamp.timeIntervalSince1970 * 1000) // ms since epoch
         let accuracy = location.horizontalAccuracy
         let payload: [String: Any] = [
@@ -610,7 +688,6 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         print("[LocationUpload] Payload: \(payload)")
         // Start background task
         backgroundTask = UIApplication.shared.beginBackgroundTask(withName: "LocationUpload") {
-            // Cleanup if time expires
             UIApplication.shared.endBackgroundTask(self.backgroundTask)
             self.backgroundTask = .invalid
         }
@@ -620,7 +697,6 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
             } else if let httpResp = response as? HTTPURLResponse {
                 print("[LocationUpload] Response: \(httpResp.statusCode)")
             }
-            // End background task
             if self.backgroundTask != .invalid {
                 UIApplication.shared.endBackgroundTask(self.backgroundTask)
                 self.backgroundTask = .invalid
