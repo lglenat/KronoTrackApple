@@ -497,11 +497,11 @@ struct ContentView: View {
                         }) {
                             Image(systemName: "line.3.horizontal")
                                 .font(.title2)
-                                .foregroundColor(.primary)
-                                .padding(10)
+                                .frame(width: 44, height: 44)
                                 .background(Color(.systemBackground).opacity(0.85))
                                 .clipShape(Circle())
                                 .shadow(radius: 2)
+                                .foregroundColor(.primary)
                         }
                         .padding(.leading, 18)
                         .padding(.bottom, 32)
