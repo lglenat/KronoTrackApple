@@ -587,16 +587,19 @@ struct ContentView: View {
                         VStack(alignment: .leading, spacing: 0) {
                             HStack(alignment: .center) {
                                 // App logo and title
-                                Image("logo")
+                                Image("kronologo")
+                                     .renderingMode(.template)
                                     .resizable()
                                     .aspectRatio(contentMode: .fit)
                                     .frame(width: 40, height: 40)
                                     .padding(.leading, 16)
                                     .foregroundColor(Color(UIColor { trait in
-                                        trait.userInterfaceStyle == .dark ? UIColor(red: 0xA8/255, green: 0x95/255, blue: 0xF7/255, alpha: 1) : UIColor(red: 0x62/255, green: 0x00/255, blue: 0xEE/255, alpha: 1)
+                                        trait.userInterfaceStyle == .dark
+                                            ? UIColor(red: 0xA8/255, green: 0x95/255, blue: 0xF7/255, alpha: 1)
+                                            : UIColor(red: 0x62/255, green: 0x00/255, blue: 0xEE/255, alpha: 1)
                                     }))
                                 Text("KronoTrack")
-                                    .font(.title2).fontWeight(.bold)
+                                    .font(.title2)
                                     .foregroundColor(Color(UIColor { trait in
                                         trait.userInterfaceStyle == .dark ? UIColor(red: 0xA8/255, green: 0x95/255, blue: 0xF7/255, alpha: 1) : UIColor(red: 0x62/255, green: 0x00/255, blue: 0xEE/255, alpha: 1)
                                     }))
