@@ -359,7 +359,8 @@ struct ContentView: View {
     @State private var isAutoNavigating = false
     @State private var autoNavTimer: Timer? = nil
     @State private var programmaticRegionChangeID = UUID() // triggers region change
-    
+    @State private var isDrawerOpen = false // NEW: controls drawer menu
+
     init() {
         let vm = AppViewModel()
         _viewModel = StateObject(wrappedValue: vm)
@@ -408,7 +409,6 @@ struct ContentView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .onAppear {
                     mapSpan = viewModel.mapRegion.span
-                    
                     // Set up notification observer for region changes
                     NotificationCenter.default.addObserver(
                         forName: NSNotification.Name("JumpToRegion"),
@@ -487,12 +487,33 @@ struct ContentView: View {
                     }
                     Spacer()
                 }
-                // Map overlay buttons (bottom left and right)
+                // Map overlay buttons: burger menu (bottom left), center/track (bottom right)
+                // Bottom left: burger menu
                 VStack {
                     Spacer()
-                    HStack(alignment: .bottom) {
-                        VStack(spacing: 12) {
-                            // Center on GPX track button
+                    HStack {
+                        Button(action: {
+                            withAnimation { isDrawerOpen = true }
+                        }) {
+                            Image(systemName: "line.3.horizontal")
+                                .font(.title2)
+                                .foregroundColor(.primary)
+                                .padding(10)
+                                .background(Color(.systemBackground).opacity(0.85))
+                                .clipShape(Circle())
+                                .shadow(radius: 2)
+                        }
+                        .padding(.leading, 18)
+                        .padding(.bottom, 32)
+                        Spacer()
+                    }
+                }
+                // Bottom right: center track & center location
+                VStack {
+                    Spacer()
+                    HStack {
+                        Spacer()
+                        VStack(spacing: 16) {
                             Button(action: {
                                 if !viewModel.gpxCoordinates.isEmpty {
                                     var minLat = viewModel.gpxCoordinates.first!.coordinate.latitude
@@ -526,7 +547,6 @@ struct ContentView: View {
                                     .clipShape(Circle())
                                     .shadow(radius: 2)
                             }
-                            // Center on user location button
                             Button(action: {
                                 if let userLoc = locationManager.userLocation {
                                     let region = MKCoordinateRegion(center: userLoc, span: viewModel.mapRegion.span)
@@ -541,34 +561,73 @@ struct ContentView: View {
                                     .shadow(radius: 2)
                             }
                         }
-                        .padding(.leading, 18)
-                        .padding(.bottom, 32)
-                        Spacer()
-                        if viewModel.isTracking, let info = viewModel.runnerInfo {
-                            RunnerInfoCard(info: info)
-                                .padding(.bottom, 36)
-                                .padding(.horizontal, 8)
-                                .transition(.move(edge: .bottom).combined(with: .opacity))
-                                .zIndex(2)
-                        }
-                        Spacer()
-                        VStack(spacing: 12) {
-                            // Three dots menu button above (zoom buttons removed)
-                            Menu {
-                                Link(NSLocalizedString("Privacy Policy", comment: "Privacy policy link"), destination: URL(string: "https://kronotiming.fr/privacy")!)
-                            } label: {
-                                Image(systemName: "ellipsis")
-                                    .font(.title2)
-                                    .foregroundColor(.white)
-                                    .padding(10)
-                                    .background(Color.black)
-                                    .clipShape(Circle())
-                                    .shadow(radius: 2)
-                            }
-                        }
                         .padding(.trailing, 18)
                         .padding(.bottom, 32)
                     }
+                }
+                // Runner info card (bottom center)
+                VStack {
+                    Spacer()
+                    if viewModel.isTracking, let info = viewModel.runnerInfo {
+                        RunnerInfoCard(info: info)
+                            .padding(.bottom, 36)
+                            .padding(.horizontal, 8)
+                            .transition(.move(edge: .bottom).combined(with: .opacity))
+                            .zIndex(2)
+                    }
+                }
+                // Drawer menu overlay
+                if isDrawerOpen {
+                    Color.black.opacity(0.3)
+                        .edgesIgnoringSafeArea(.all)
+                        .onTapGesture {
+                            withAnimation { isDrawerOpen = false }
+                        }
+                    HStack(spacing: 0) {
+                        VStack(alignment: .leading, spacing: 0) {
+                            HStack(alignment: .center) {
+                                // App logo and title
+                                Image("logo")
+                                    .resizable()
+                                    .aspectRatio(contentMode: .fit)
+                                    .frame(width: 40, height: 40)
+                                    .padding(.leading, 16)
+                                    .foregroundColor(Color(UIColor { trait in
+                                        trait.userInterfaceStyle == .dark ? UIColor(red: 0xA8/255, green: 0x95/255, blue: 0xF7/255, alpha: 1) : UIColor(red: 0x62/255, green: 0x00/255, blue: 0xEE/255, alpha: 1)
+                                    }))
+                                Text("KronoTrack")
+                                    .font(.title2).fontWeight(.bold)
+                                    .foregroundColor(Color(UIColor { trait in
+                                        trait.userInterfaceStyle == .dark ? UIColor(red: 0xA8/255, green: 0x95/255, blue: 0xF7/255, alpha: 1) : UIColor(red: 0x62/255, green: 0x00/255, blue: 0xEE/255, alpha: 1)
+                                    }))
+                                    .padding(.leading, 8)
+                                Spacer()
+                                Button(action: { withAnimation { isDrawerOpen = false } }) {
+                                    Image(systemName: "xmark")
+                                        .font(.title2)
+                                        .foregroundColor(.primary)
+                                        .padding(12)
+                                }
+                            }
+                            .padding(.top, 64)
+                            .padding(.trailing, 8)
+                            .padding(.bottom, 8)
+                            // Divider below title
+                            Divider().padding(.horizontal, 8)
+                            Spacer().frame(height: 16)
+                            Link("Politique de confidentialité", destination: URL(string: "https://kronotiming.fr/privacy")!)
+                                .font(.headline)
+                                .padding(.horizontal, 24)
+                                .padding(.vertical, 12)
+                            Spacer()
+                        }
+                        .frame(width: UIScreen.main.bounds.width * 0.66)
+                        .background(Color(.systemBackground))
+                        .edgesIgnoringSafeArea(.vertical)
+                        Spacer()
+                    }
+                    .transition(.move(edge: .leading))
+                    .zIndex(10)
                 }
             }
             .contentShape(Rectangle())
