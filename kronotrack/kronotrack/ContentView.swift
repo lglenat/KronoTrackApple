@@ -371,6 +371,10 @@ struct FloatingLabelTextField: View {
                 .focused($isFocused)
         }
         .padding(.vertical, 8)
+        .contentShape(Rectangle()) // Make the whole area tappable
+        .onTapGesture {
+            isFocused = true
+        }
     }
 }
 
@@ -636,7 +640,6 @@ struct ContentView: View {
                             Divider().padding(.horizontal, 8)
                             Spacer().frame(height: 16)
                             Link("Politique de confidentialité", destination: URL(string: "https://kronotiming.fr/privacy")!)
-                                .font(.headline)
                                 .padding(.horizontal, 24)
                                 .padding(.vertical, 12)
                             Spacer()
