@@ -350,6 +350,30 @@ struct MapPolylineView: UIViewRepresentable {
     }
 }
 
+struct FloatingLabelTextField: View {
+    let title: String
+    @Binding var text: String
+    var keyboardType: UIKeyboardType = .default
+
+    @FocusState private var isFocused: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .font(.caption)
+                .foregroundColor(isFocused || !text.isEmpty ? .accentColor : .secondary)
+                // .offset(y: isFocused || !text.isEmpty ? -20 : 0)
+                .animation(.easeInOut(duration: 0.2), value: isFocused || !text.isEmpty)
+
+            TextField("", text: $text)
+                .keyboardType(keyboardType)
+                .textFieldStyle(.roundedBorder)
+                .focused($isFocused)
+        }
+        .padding(.vertical, 8)
+    }
+}
+
 struct ContentView: View {
     @StateObject var viewModel = AppViewModel()
     @StateObject var locationManager = LocationManager()
@@ -423,22 +447,16 @@ struct ContentView: View {
                 VStack {
                     // Controls card moved up
                     HStack {
-                        VStack(spacing: 12) {
+                        VStack(spacing: 4) {
                             Picker("Course", selection: $viewModel.selectedCourse) {
                                 ForEach(viewModel.courses) { course in
                                     Text(course.name).tag(course as Course?)
                                 }
                             }
                             .pickerStyle(.automatic)
-                            HStack(spacing: 8) {
-                                TextField(NSLocalizedString("Bib Number", comment: "Bib input"), text: $viewModel.bib)
-                                    .keyboardType(.numberPad)
-                                    .textFieldStyle(.roundedBorder)
-                                    .focused($focusedField, equals: 1)
-                                TextField(NSLocalizedString("Birth Year", comment: "Birth year input"), text: $viewModel.birthYear)
-                                    .keyboardType(.numberPad)
-                                    .textFieldStyle(.roundedBorder)
-                                    .focused($focusedField, equals: 2)
+                            HStack(spacing: 4) {
+                                FloatingLabelTextField(title: NSLocalizedString("Bib Number", comment: "Bib input"), text: $viewModel.bib, keyboardType: .numberPad)
+                                FloatingLabelTextField(title: NSLocalizedString("Birth Year", comment: "Birth year input"), text: $viewModel.birthYear, keyboardType: .numberPad)
                                     .onChange(of: viewModel.birthYear) { newValue in
                                         let filtered = newValue.filter { $0.isNumber }
                                         if filtered.count > 4 {
@@ -447,11 +465,9 @@ struct ContentView: View {
                                             viewModel.birthYear = filtered
                                         }
                                     }
-                                TextField(NSLocalizedString("Race Code", comment: "Race code input"), text: $viewModel.code)
-                                    .textFieldStyle(.roundedBorder)
-                                    .focused($focusedField, equals: 3)
+                                FloatingLabelTextField(title: NSLocalizedString("Race Code", comment: "Race code input"), text: $viewModel.code)
                                     .onChange(of: viewModel.code) { newValue in
-                                        if (newValue.count > 6) {
+                                        if newValue.count > 6 {
                                             viewModel.code = String(newValue.prefix(6))
                                         }
                                     }
