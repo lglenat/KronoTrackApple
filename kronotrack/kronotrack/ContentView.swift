@@ -491,7 +491,36 @@ struct ContentView: View {
                 VStack {
                     Spacer()
                     HStack(alignment: .bottom) {
+                        // Info button (moved to left side)
                         VStack(spacing: 12) {
+                            Menu {
+                                Link(NSLocalizedString("Privacy Policy", comment: "Privacy policy link"), destination: URL(string: "https://kronotiming.fr/privacy")!)
+                            } label: {
+                                Image(systemName: "info.circle")
+                                    .font(.title)
+                                    .padding(12)
+                                    .background(Color(.systemBackground).opacity(0.85))
+                                    .clipShape(Circle())
+                                    .shadow(radius: 2)
+                            }
+                        }
+                        .padding(.leading, 18)
+                        .padding(.bottom, 32)
+                        
+                        Spacer()
+                        
+                        if viewModel.isTracking, let info = viewModel.runnerInfo {
+                            RunnerInfoCard(info: info)
+                                .padding(.bottom, 36)
+                                .padding(.horizontal, 8)
+                                .transition(.move(edge: .bottom).combined(with: .opacity))
+                                .zIndex(2)
+                        }
+                        
+                        Spacer()
+                        
+                        // Map control buttons (moved to right side)
+                        VStack(spacing: 14) {
                             // Center on GPX track button
                             Button(action: {
                                 if !viewModel.gpxCoordinates.isEmpty {
@@ -520,8 +549,8 @@ struct ContentView: View {
                                 }
                             }) {
                                 Image(systemName: "point.topleft.down.curvedto.point.bottomright.up")
-                                    .font(.title2)
-                                    .padding(10)
+                                    .font(.title)
+                                    .padding(12)
                                     .background(Color(.systemBackground).opacity(0.85))
                                     .clipShape(Circle())
                                     .shadow(radius: 2)
@@ -534,34 +563,9 @@ struct ContentView: View {
                                 }
                             }) {
                                 Image(systemName: "location.fill")
-                                    .font(.title2)
-                                    .padding(10)
+                                    .font(.title)
+                                    .padding(12)
                                     .background(Color(.systemBackground).opacity(0.85))
-                                    .clipShape(Circle())
-                                    .shadow(radius: 2)
-                            }
-                        }
-                        .padding(.leading, 18)
-                        .padding(.bottom, 32)
-                        Spacer()
-                        if viewModel.isTracking, let info = viewModel.runnerInfo {
-                            RunnerInfoCard(info: info)
-                                .padding(.bottom, 36)
-                                .padding(.horizontal, 8)
-                                .transition(.move(edge: .bottom).combined(with: .opacity))
-                                .zIndex(2)
-                        }
-                        Spacer()
-                        VStack(spacing: 12) {
-                            // Three dots menu button above (zoom buttons removed)
-                            Menu {
-                                Link(NSLocalizedString("Privacy Policy", comment: "Privacy policy link"), destination: URL(string: "https://kronotiming.fr/privacy")!)
-                            } label: {
-                                Image(systemName: "ellipsis")
-                                    .font(.title2)
-                                    .foregroundColor(.white)
-                                    .padding(10)
-                                    .background(Color.black)
                                     .clipShape(Circle())
                                     .shadow(radius: 2)
                             }
