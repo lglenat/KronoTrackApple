@@ -491,36 +491,7 @@ struct ContentView: View {
                 VStack {
                     Spacer()
                     HStack(alignment: .bottom) {
-                        // Info button (moved to left side)
                         VStack(spacing: 12) {
-                            Menu {
-                                Link(NSLocalizedString("Privacy Policy", comment: "Privacy policy link"), destination: URL(string: "https://kronotiming.fr/privacy")!)
-                            } label: {
-                                Image(systemName: "info.circle")
-                                    .font(.title)
-                                    .padding(12)
-                                    .background(Color(.systemBackground).opacity(0.85))
-                                    .clipShape(Circle())
-                                    .shadow(radius: 2)
-                            }
-                        }
-                        .padding(.leading, 18)
-                        .padding(.bottom, 32)
-                        
-                        Spacer()
-                        
-                        if viewModel.isTracking, let info = viewModel.runnerInfo {
-                            RunnerInfoCard(info: info)
-                                .padding(.bottom, 36)
-                                .padding(.horizontal, 8)
-                                .transition(.move(edge: .bottom).combined(with: .opacity))
-                                .zIndex(2)
-                        }
-                        
-                        Spacer()
-                        
-                        // Map control buttons (moved to right side)
-                        VStack(spacing: 14) {
                             // Center on GPX track button
                             Button(action: {
                                 if !viewModel.gpxCoordinates.isEmpty {
@@ -549,8 +520,8 @@ struct ContentView: View {
                                 }
                             }) {
                                 Image(systemName: "point.topleft.down.curvedto.point.bottomright.up")
-                                    .font(.title)
-                                    .padding(12)
+                                    .font(.title2)
+                                    .padding(10)
                                     .background(Color(.systemBackground).opacity(0.85))
                                     .clipShape(Circle())
                                     .shadow(radius: 2)
@@ -563,9 +534,34 @@ struct ContentView: View {
                                 }
                             }) {
                                 Image(systemName: "location.fill")
-                                    .font(.title)
-                                    .padding(12)
+                                    .font(.title2)
+                                    .padding(10)
                                     .background(Color(.systemBackground).opacity(0.85))
+                                    .clipShape(Circle())
+                                    .shadow(radius: 2)
+                            }
+                        }
+                        .padding(.leading, 18)
+                        .padding(.bottom, 32)
+                        Spacer()
+                        if viewModel.isTracking, let info = viewModel.runnerInfo {
+                            RunnerInfoCard(info: info)
+                                .padding(.bottom, 36)
+                                .padding(.horizontal, 8)
+                                .transition(.move(edge: .bottom).combined(with: .opacity))
+                                .zIndex(2)
+                        }
+                        Spacer()
+                        VStack(spacing: 12) {
+                            // Three dots menu button above (zoom buttons removed)
+                            Menu {
+                                Link(NSLocalizedString("Privacy Policy", comment: "Privacy policy link"), destination: URL(string: "https://kronotiming.fr/privacy")!)
+                            } label: {
+                                Image(systemName: "ellipsis")
+                                    .font(.title2)
+                                    .foregroundColor(.white)
+                                    .padding(10)
+                                    .background(Color.black)
                                     .clipShape(Circle())
                                     .shadow(radius: 2)
                             }
@@ -603,8 +599,23 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         manager.pausesLocationUpdatesAutomatically = false
         manager.desiredAccuracy = kCLLocationAccuracyBest
         manager.distanceFilter = kCLDistanceFilterNone
-        // Removed notification observers and isInBackground logic
+        // Observe app state changes
+        NotificationCenter.default.addObserver(self, selector: #selector(appDidEnterBackground), name: UIApplication.didEnterBackgroundNotification, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(appWillEnterForeground), name: UIApplication.willEnterForegroundNotification, object: nil)
     }
+    
+    @objc private func appDidEnterBackground() {
+        manager.distanceFilter = 100
+        manager.pausesLocationUpdatesAutomatically = true
+        manager.desiredAccuracy = kCLLocationAccuracyBest
+    }
+    
+    @objc private func appWillEnterForeground() {
+        manager.distanceFilter = kCLDistanceFilterNone
+        manager.pausesLocationUpdatesAutomatically = false
+        manager.desiredAccuracy = kCLLocationAccuracyBest
+    }
+    
     func requestPermissions(completion: ((Bool) -> Void)? = nil) {
         let status = CLLocationManager.authorizationStatus()
         if status == .notDetermined {
