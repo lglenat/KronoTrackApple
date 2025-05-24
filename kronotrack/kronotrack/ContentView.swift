@@ -456,26 +456,27 @@ struct ContentView: View {
                                         }
                                     }
                             }
-                            Button(viewModel.isTracking ? NSLocalizedString("Stop Tracking", comment: "Stop tracking button") : NSLocalizedString("Start Tracking", comment: "Start tracking button")) {
-                                dismissKeyboard()
-                                if viewModel.isTracking {
-                                    locationManager.stopTracking()
-                                    viewModel.isTracking = false
-                                    NotificationManager.shared.showTrackingNotification(isTracking: false)
-                                } else {
-                                    viewModel.startTrackingIfPossible(locationManager: locationManager) { success in
-                                        if (!success) {
-                                            showingAlert = true
-                                        } else {
-                                            NotificationManager.shared.showTrackingNotification(isTracking: true)
+                            // Button and progress indicator row
+                            HStack(spacing: 12) {
+                                Button(viewModel.isTracking ? NSLocalizedString("Stop Tracking", comment: "Stop tracking button") : NSLocalizedString("Start Tracking", comment: "Start tracking button")) {
+                                    dismissKeyboard()
+                                    if viewModel.isTracking {
+                                        locationManager.stopTracking()
+                                        viewModel.isTracking = false
+                                        NotificationManager.shared.showTrackingNotification(isTracking: false)
+                                    } else {
+                                        viewModel.startTrackingIfPossible(locationManager: locationManager) { success in
+                                            if (!success) {
+                                                showingAlert = true
+                                            } else {
+                                                NotificationManager.shared.showTrackingNotification(isTracking: true)
+                                            }
                                         }
                                     }
                                 }
-                            }
-                            .buttonStyle(.borderedProminent)
-                            .disabled(viewModel.isLoading)
-                            if viewModel.isLoading {
-                                ProgressView()
+                                .buttonStyle(.borderedProminent)
+                                .disabled(viewModel.isLoading) // Disable button while loading
+                                .opacity(viewModel.isLoading ? 0.5 : 1.0) // Dim button while loading
                             }
                         }
                         .padding()
