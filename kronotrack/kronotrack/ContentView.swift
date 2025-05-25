@@ -408,6 +408,7 @@ struct FloatingLabelTextField: View {
 // Alert handling with identifiable alert items
 enum AlertType: Identifiable {
     case error(message: String)
+    case locationServicesDisabled
     case locationPermission
     case preciseLocation
     case notificationPermission
@@ -415,6 +416,7 @@ enum AlertType: Identifiable {
     var id: Int {
         switch self {
         case .error: return 0
+        case .locationServicesDisabled: return 4
         case .locationPermission: return 1
         case .preciseLocation: return 2
         case .notificationPermission: return 3
@@ -424,6 +426,7 @@ enum AlertType: Identifiable {
     var title: String {
         switch self {
         case .error: return "Erreur"
+        case .locationServicesDisabled: return "Service de localisation"
         case .locationPermission: return "Position en arrière plan"
         case .preciseLocation: return "Position exacte"
         case .notificationPermission: return "Notifications"
@@ -433,6 +436,7 @@ enum AlertType: Identifiable {
     var message: String {
         switch self {
         case .error(let message): return message
+        case .locationServicesDisabled: return "Pour démarrer le suivi, veuillez d'abord activer le service de localisation de votre appareil dans Réglages > Confidentialité et sécurité > Service the localisation."
         case .locationPermission: return "Pour démarrer le suivi, veuillez d'abord autoriser l'accès à votre position \"Toujours\"."
         case .preciseLocation: return "Pour démarrer le suivi, veuillez d'abord activer \"Position exacte\" dans les réglages d'accès à votre position."
         case .notificationPermission: return "Pour démarrer le suivi, veuillez autoriser l'accès aux notifications."
@@ -485,10 +489,17 @@ struct ContentView: View {
             UIApplication.shared.open(url)
         }
     }
+
     private func handleStartTracking() {
         // Set loading state immediately
         viewModel.isLoading = true
         
+        // Check if location services are enabled
+        if !CLLocationManager.locationServicesEnabled() {
+            viewModel.isLoading = false
+            currentAlert = .locationServicesDisabled
+            return
+        }
         // Check permissions with visual feedback for all cases
         let locationStatus = CLLocationManager.authorizationStatus()
         let preciseLocation = locationManager.manager.accuracyAuthorization == .fullAccuracy
@@ -828,6 +839,12 @@ struct ContentView: View {
                         message: Text(message),
                         dismissButton: .default(Text("OK"))
                     )
+                case .locationServicesDisabled:
+                    return Alert(
+                        title: Text(alertType.title),
+                        message: Text(alertType.message),
+                        dismissButton: .default(Text("OK"))
+                    )
                 case .locationPermission, .preciseLocation, .notificationPermission:
                     return Alert(
                         title: Text(alertType.title),
@@ -863,15 +880,15 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
     }
     
     @objc private func appDidEnterBackground() {
-        manager.distanceFilter = 100
-        manager.pausesLocationUpdatesAutomatically = true
-        manager.desiredAccuracy = kCLLocationAccuracyBest
+        // manager.distanceFilter = 100
+        // manager.pausesLocationUpdatesAutomatically = true
+        // manager.desiredAccuracy = kCLLocationAccuracyBest
     }
     
     @objc private func appWillEnterForeground() {
         manager.distanceFilter = kCLDistanceFilterNone
         manager.pausesLocationUpdatesAutomatically = false
-        manager.desiredAccuracy = kCLLocationAccuracyBest
+        // manager.desiredAccuracy = kCLLocationAccuracyBest
     }
     func startTracking() {
         isTracking = true
