@@ -492,58 +492,36 @@ struct ContentView: View {
 
     private func handleStartTracking() {
         viewModel.isLoading = true
+
         if !CLLocationManager.locationServicesEnabled() {
             viewModel.isLoading = false
             currentAlert = .locationServicesDisabled
             return
         }
+
         let locationStatus = CLLocationManager.authorizationStatus()
         print("location status: \(locationStatus)")
         let preciseLocation = locationManager.manager.accuracyAuthorization == .fullAccuracy
-
+        print("precise location: \(preciseLocation)")
 
         if locationStatus == .notDetermined {
-            print("location status: notDetermined")
-            locationManager.awaitingAuthorization = true
-            locationManager.onAuthorizationChange = { status in
-                DispatchQueue.main.async {
-                    let preciseLocation = locationManager.manager.accuracyAuthorization == .fullAccuracy
-                    print("location precision high accuracy: \(preciseLocation)")
-
-                    if status == .authorizedWhenInUse  {
-                        print("User granted when in use, starting again to request always")
-                        handleStartTracking()
-                    } else if status == .denied {
-                        print("User denied location permissions")
-                        viewModel.isLoading = false
-                        currentAlert = .locationPermission
-                        return
-                    }
-                }
-            }
-            print("Requesting when in use authorization")
+            print("Requesting when in use authorization from handlestarttracking")
+            viewModel.isLoading = false
             locationManager.manager.requestWhenInUseAuthorization()
             return
         }
 
-        if locationStatus == .denied {
-            print("location status: denied")
+        if locationStatus != .authorizedAlways {
+            print("location status: not always authorized, user has to manually change")
             viewModel.isLoading = false
             currentAlert = .locationPermission
             return
         }
 
         if !preciseLocation {
+            print("location status: precise location not granted")
             viewModel.isLoading = false
             currentAlert = .preciseLocation
-            return
-        }
-
-        if locationStatus == .authorizedWhenInUse {
-            print("location status: authorizedWhenInUse")
-            print("Requesting always authorization")
-            locationManager.manager.requestAlwaysAuthorization()
-            locationPermissionCheckedContinue()
             return
         }
 
@@ -1009,20 +987,31 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
             }
         }.resume()
     }
-    // --- NEW: Handle authorization changes (iOS 14+) ---
+
     func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
         let status = manager.authorizationStatus
         print("locationManagerDidChangeAuthorization status changed: \(status)")
-        if awaitingAuthorization {
-            awaitingAuthorization = false
-            onAuthorizationChange?(status)
+        
+        if status == .notDetermined {
+            print("Requesting when in use authorization")
+            manager.requestWhenInUseAuthorization()
+            return
         }
-    }
-    // --- For iOS < 14 ---
-    func locationManager(_ manager: CLLocationManager, didChangeAuthorization status: CLAuthorizationStatus) {
-        if awaitingAuthorization {
-            awaitingAuthorization = false
-            onAuthorizationChange?(status)
+
+        if status == .authorizedWhenInUse {
+            print("Requesting always authorization")
+            manager.requestAlwaysAuthorization()
+            return
+        }
+
+        if status == .denied {
+            print("Denied, will show alert when starting tracking")
+            return
+        }
+
+        if status == .authorizedAlways {
+            print("Authorized always, nothing to do")
+            return
         }
     }
 }
