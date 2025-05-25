@@ -135,97 +135,126 @@ class AppViewModel: ObservableObject {
             }
         }.resume()
     }
-    func startTrackingIfPossible(locationManager: LocationManager, completion: @escaping (Bool) -> Void) {
+    func startTrackingIfPossible(_ locationManager: LocationManager, completion: @escaping (Bool) -> Void) {
         // 1. Validate input fields
         guard let course = selectedCourse, !bib.isEmpty, birthYear.count == 4, code.count == 6 else {
             DispatchQueue.main.async {
                 self.errorMessage = NSLocalizedString("Veuillez remplir tous les champs correctement.", comment: "Missing fields")
+                self.isLoading = false
             }
             completion(false)
             return
         }
         // Store selected course id to UserDefaults for background access
         UserDefaults.standard.set(course.id, forKey: "main_event")
-        // 2. Request notification and location permissions
-        NotificationManager.shared.requestPermissions()
-        locationManager.requestPermissions { granted in
-            guard granted else {
-                DispatchQueue.main.async {
-                    self.errorMessage = NSLocalizedString("Autorisation de localisation requise.", comment: "Location permission required")
-                }
-                completion(false)
-                return
+        
+        // 2. Call validation API
+        self.isLoading = true
+        let url = URL(string: "https://live.kronotiming.fr/track")!
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let payload: [String: Any] = [
+            "main_event": course.id,
+            "bib": Int(self.bib) ?? self.bib, // send as Int if possible
+            "birth_year": Int(self.birthYear) ?? self.birthYear, // send as Int if possible
+            "code": self.code
+        ]
+        req.httpBody = try? JSONSerialization.data(withJSONObject: payload)
+        
+        // Debug output for API call
+        print("Sending API request: \(payload)")
+        
+        URLSession.shared.dataTask(with: req) { data, response, error in
+            // Print API response for debugging
+            if let data = data, let responseString = String(data: data, encoding: .utf8) {
+                print("API Response: \(responseString)")
             }
-            // 3. Call validation API
-            self.isLoading = true
-            let url = URL(string: "https://live.kronotiming.fr/track")!
-            var req = URLRequest(url: url)
-            req.httpMethod = "POST"
-            req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            let payload: [String: Any] = [
-                "main_event": course.id,
-                "bib": Int(self.bib) ?? self.bib, // send as Int if possible
-                "birth_year": Int(self.birthYear) ?? self.birthYear, // send as Int if possible
-                "code": self.code
-            ]
-            req.httpBody = try? JSONSerialization.data(withJSONObject: payload)
-            URLSession.shared.dataTask(with: req) { data, response, error in
+            
+            // Handle network errors
+            if let error = error {
+                print("API Error: \(error.localizedDescription)")
                 DispatchQueue.main.async {
                     self.isLoading = false
-                }
-                guard let data = data, error == nil,
-                      let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-                    DispatchQueue.main.async {
-                        self.errorMessage = NSLocalizedString("Erreur réseau ou serveur.", comment: "Network/server error")
-                    }
+                    self.errorMessage = NSLocalizedString("Erreur réseau ou serveur: \(error.localizedDescription)", comment: "Network error")
                     completion(false)
-                    return
                 }
-                if let errorMsg = obj["error"] as? String {
-                    DispatchQueue.main.async {
-                        self.errorMessage = errorMsg
-                    }
+                return
+            }
+            
+            // Handle HTTP errors
+            if let httpResponse = response as? HTTPURLResponse, !(200...299).contains(httpResponse.statusCode) {
+                print("API HTTP Error: \(httpResponse.statusCode)")
+                DispatchQueue.main.async {
+                    self.isLoading = false
+                    self.errorMessage = NSLocalizedString("Erreur serveur: \(httpResponse.statusCode)", comment: "Server error")
                     completion(false)
-                    return
                 }
-                if let trackArr = obj["track"] as? [[Any]] {
-                    let coords: [GPXPoint] = trackArr.compactMap { arr in
-                        if arr.count == 2, let lat = arr[0] as? Double, let lon = arr[1] as? Double {
-                            return GPXPoint(coordinate: CLLocationCoordinate2D(latitude: lat, longitude: lon))
-                        }
-                        return nil
+                return
+            }
+            
+            // Handle invalid JSON
+            guard let data = data,
+                  let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                DispatchQueue.main.async {
+                    self.isLoading = false
+                    self.errorMessage = NSLocalizedString("Erreur de décodage de la réponse.", comment: "JSON decoding error")
+                    completion(false)
+                }
+                return
+            }
+            
+            // Handle API errors
+            if let errorMsg = obj["error"] as? String {
+                DispatchQueue.main.async {
+                    self.isLoading = false
+                    self.errorMessage = errorMsg
+                    completion(false)
+                }
+                return
+            }
+            
+            // Process track data if available
+            if let trackArr = obj["track"] as? [[Any]] {
+                let coords: [GPXPoint] = trackArr.compactMap { arr in
+                    if arr.count == 2, let lat = arr[0] as? Double, let lon = arr[1] as? Double {
+                        return GPXPoint(coordinate: CLLocationCoordinate2D(latitude: lat, longitude: lon))
                     }
-                    DispatchQueue.main.async {
-                        self.gpxCoordinates = coords
-                        self.errorMessage = nil
-                        // --- Jump to GPX track region when starting tracking ---
-                        if let region = Self.regionForGPXTrack(coords) {
-                            self.notifyRegionChange?(region)
-                        }
+                    return nil
+                }
+                DispatchQueue.main.async {
+                    self.gpxCoordinates = coords
+                    self.errorMessage = nil
+                    // --- Jump to GPX track region when starting tracking ---
+                    if let region = Self.regionForGPXTrack(coords) {
+                        self.notifyRegionChange?(region)
                     }
                 }
-                let firstName = obj["firstName"] as? String ?? ""
-                let lastName = obj["lastName"] as? String ?? ""
-                let eventName = obj["eventName"] as? String ?? self.selectedCourse?.name ?? ""
-                DispatchQueue.main.async {
-                    self.runnerInfo = RunnerInfo(
-                        firstName: firstName,
-                        lastName: lastName,
-                        eventName: eventName,
-                        bib: self.bib,
-                        birthYear: self.birthYear,
-                        code: self.code
-                    )
-                }
-                DispatchQueue.main.async {
-                    self.isTracking = true
-                }
-                DispatchQueue.main.async {
-                    locationManager.startTracking()
-                }
+            }
+            
+            // Process runner info
+            let firstName = obj["firstName"] as? String ?? ""
+            let lastName = obj["lastName"] as? String ?? ""
+            let eventName = obj["eventName"] as? String ?? self.selectedCourse?.name ?? ""
+            
+            // All good - update UI and start tracking
+            DispatchQueue.main.async {
+                self.isLoading = false
+                
+                self.runnerInfo = RunnerInfo(
+                    firstName: firstName,
+                    lastName: lastName,
+                    eventName: eventName,
+                    bib: self.bib,
+                    birthYear: self.birthYear,
+                    code: self.code
+                )
+                
+                self.isTracking = true
+                locationManager.startTracking()
                 completion(true)
-            }.resume()
-        }
+            }
+        }.resume()
     }
     // ...location tracking and upload logic will be added here...
 }
@@ -378,18 +407,47 @@ struct FloatingLabelTextField: View {
     }
 }
 
+// Alert handling with identifiable alert items
+enum AlertType: Identifiable {
+    case error(message: String)
+    case locationPermission
+    case preciseLocation
+    
+    var id: Int {
+        switch self {
+        case .error: return 0
+        case .locationPermission: return 1
+        case .preciseLocation: return 2
+        }
+    }
+    
+    var title: String {
+        switch self {
+        case .error: return "Erreur"
+        case .locationPermission: return "Accès requis à la position en arrière plan"
+        case .preciseLocation: return "Accès requis à la position exacte"
+        }
+    }
+    
+    var message: String {
+        switch self {
+        case .error(let message): return message
+        case .locationPermission: return "Pour activer le suivi, veuillez autoriser l'accès à votre position \"Toujours\"."
+        case .preciseLocation: return "Veuillez activer \"Position exacte\" dans les réglages d'accès à votre position."
+        }
+    }
+}
+
 struct ContentView: View {
     @StateObject var viewModel = AppViewModel()
     @StateObject var locationManager = LocationManager()
-    @State private var showingAlert = false
+    @State private var currentAlert: AlertType? = nil
     @State private var mapSpan: MKCoordinateSpan = MKCoordinateSpan(latitudeDelta: 0.01, longitudeDelta: 0.01)
     @FocusState private var focusedField: Int?
     @State private var isAutoNavigating = false
     @State private var autoNavTimer: Timer? = nil
     @State private var programmaticRegionChangeID = UUID() // triggers region change
     @State private var isDrawerOpen = false // NEW: controls drawer menu
-    // New state for location settings alert
-    @State private var showingLocationSettingsAlert = false
 
     init() {
         let vm = AppViewModel()
@@ -423,6 +481,56 @@ struct ContentView: View {
     private func openAppSettings() {
         if let url = URL(string: UIApplication.openSettingsURLString) {
             UIApplication.shared.open(url)
+        }
+    }
+    private func handleStartTracking() {
+        // Set loading state immediately
+        viewModel.isLoading = true
+        
+        // Check permissions with visual feedback for all cases
+        let locationStatus = CLLocationManager.authorizationStatus()
+        let preciseLocation = locationManager.manager.accuracyAuthorization == .fullAccuracy
+        
+        // Debug output
+        let statusText: String
+        switch locationStatus {
+        case .notDetermined: statusText = "notDetermined"
+        case .restricted: statusText = "restricted"
+        case .denied: statusText = "denied"
+        case .authorizedAlways: statusText = "authorizedAlways"
+        case .authorizedWhenInUse: statusText = "authorizedWhenInUse"
+        @unknown default: statusText = "unknown(\(locationStatus.rawValue))"
+        }
+        // print("Location status: \(statusText) (raw: \(locationStatus.rawValue)), Precise: \(preciseLocation)")
+        
+        if locationStatus != .authorizedAlways {
+            viewModel.isLoading = false
+            currentAlert = .locationPermission
+            return
+        }
+        
+        if !preciseLocation {
+            viewModel.isLoading = false
+            currentAlert = .preciseLocation
+            return
+        }
+        
+        // Try to start tracking through the view model
+        viewModel.startTrackingIfPossible(locationManager) { success in
+            DispatchQueue.main.async {
+                self.viewModel.isLoading = false
+                
+                if success {
+                    // Tracking started successfully
+                    NotificationManager.shared.showTrackingNotification(isTracking: true)
+                } else if let errorMessage = self.viewModel.errorMessage {
+                    // Show the error message from the view model
+                    self.currentAlert = .error(message: errorMessage)
+                } else {
+                    // Generic error case
+                    self.currentAlert = .error(message: "Erreur lors du démarrage du suivi.")
+                }
+            }
         }
     }
 
@@ -494,19 +602,8 @@ struct ContentView: View {
                                         viewModel.isTracking = false
                                         NotificationManager.shared.showTrackingNotification(isTracking: false)
                                     } else {
-                                        viewModel.startTrackingIfPossible(locationManager: locationManager) { success in
-                                            if (!success) {
-                                                // Check if the error is location permission
-                                                let status = CLLocationManager.authorizationStatus()
-                                                if status == .denied || status == .restricted {
-                                                    showingLocationSettingsAlert = true
-                                                } else {
-                                                    showingAlert = true
-                                                }
-                                            } else {
-                                                NotificationManager.shared.showTrackingNotification(isTracking: true)
-                                            }
-                                        }
+                                        // Use the dedicated method instead of inline logic
+                                        handleStartTracking()
                                     }
                                 }
                                 .buttonStyle(.borderedProminent)
@@ -688,27 +785,32 @@ struct ContentView: View {
             .onAppear {
                 viewModel.fetchCourses()
             }
-            // Main error alert (for non-permission errors)
-            .alert(isPresented: $showingAlert) {
-                Alert(title: Text("Erreur"), message: Text(viewModel.errorMessage ?? "Erreur inconnue"), dismissButton: .default(Text("OK")))
-            }
-            // Location permission alert with Settings button
-            .alert(isPresented: $showingLocationSettingsAlert) {
-                Alert(
-                    title: Text("Autorisation de localisation requise"),
-                    message: Text("Pour activer le suivi, veuillez autoriser l'accès à votre position dans les Réglages."),
-                    primaryButton: .default(Text("Ouvrir les Réglages")) {
-                        openAppSettings()
-                    },
-                    secondaryButton: .cancel(Text("Annuler"))
-                )
+            // Unified alert system for all types of alerts
+            .alert(item: $currentAlert) { alertType in
+                switch alertType {
+                case .error(let message):
+                    return Alert(
+                        title: Text(alertType.title),
+                        message: Text(message),
+                        dismissButton: .default(Text("OK"))
+                    )
+                case .locationPermission, .preciseLocation:
+                    return Alert(
+                        title: Text(alertType.title),
+                        message: Text(alertType.message),
+                        primaryButton: .default(Text("Ouvrir les réglages")) {
+                            openAppSettings()
+                        },
+                        secondaryButton: .cancel(Text("Annuler"))
+                    )
+                }
             }
         }
     }
 }
 
 class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
-    private let manager = CLLocationManager()
+    internal let manager = CLLocationManager() // Change from private to internal
     @Published var userLocation: CLLocationCoordinate2D? = nil
     @Published var isTracking: Bool = false
     private var lastUpload: Date? = nil
@@ -738,7 +840,7 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         manager.desiredAccuracy = kCLLocationAccuracyBest
     }
     
-    func requestPermissions(completion: ((Bool) -> Void)? = nil) {
+    func requestPermissions(completion: ((Bool, Bool, Bool) -> Void)? = nil) {
         let status = CLLocationManager.authorizationStatus()
         if status == .notDetermined {
             manager.requestWhenInUseAuthorization()
@@ -756,7 +858,10 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         NotificationManager.shared.requestPermissions()
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
             let newStatus = CLLocationManager.authorizationStatus()
-            completion?(newStatus == .authorizedAlways)
+            let always = newStatus == .authorizedAlways
+            let granted = always || newStatus == .authorizedWhenInUse
+            let precise = self.manager.accuracyAuthorization == .fullAccuracy
+            completion?(granted, precise, always)
         }
     }
     func startTracking() {
