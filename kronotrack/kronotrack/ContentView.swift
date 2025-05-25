@@ -503,7 +503,7 @@ struct ContentView: View {
                         .background(Color(.systemBackground).opacity(0.85))
                         .cornerRadius(16)
                         .shadow(radius: 8)
-                        .padding(.top, 32) // Move up by reducing top padding
+                        .padding(.top, 16)
                         .padding(.horizontal, 16)
                     }
                     Spacer()
@@ -641,9 +641,20 @@ struct ContentView: View {
                             // Divider below title
                             Divider().padding(.horizontal, 8)
                             Spacer().frame(height: 16)
-                            Link("Politique de confidentialité", destination: URL(string: "https://kronotiming.fr/privacy")!)
-                                .padding(.horizontal, 0)
-                                .padding(.vertical, 12)
+                            HStack {
+                                Image(systemName: "lock.fill")
+                                    .foregroundColor(.accentColor)
+                                Link("Politique de confidentialité", destination: URL(string: "https://kronotiming.fr/privacy")!)
+                            }
+                            .padding(.horizontal, 4)
+                            .padding(.vertical, 12)
+                            HStack {
+                                Image(systemName: "flag.checkered")
+                                    .foregroundColor(.accentColor)
+                                Link("Résultats", destination: URL(string: "https://live.kronotiming.fr/results")!)
+                            }
+                            .padding(.horizontal, 4)
+                            .padding(.vertical, 12)
                             Spacer()
                         }
                         .frame(width: UIScreen.main.bounds.width * 0.66)
