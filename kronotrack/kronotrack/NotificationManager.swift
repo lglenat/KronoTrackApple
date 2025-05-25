@@ -19,13 +19,15 @@ class NotificationManager {
     }
     
     private func showTrackingActiveNotification() {
+        // First, remove any existing notification to prevent duplicates
+        clearTrackingNotifications()
+        
         let content = UNMutableNotificationContent()
         content.title = NSLocalizedString("Krono Location: Tracking Active", comment: "Tracking active notification title")
         content.body = NSLocalizedString("Your location is being uploaded every minute.", comment: "Tracking active notification body")
         content.sound = .default
-        content.categoryIdentifier = "TRACKING_STATUS"
         
-        // Create a request for immediate delivery (no trigger)
+        // Create a simple request with no trigger (delivers immediately)
         let request = UNNotificationRequest(identifier: trackingNotificationIdentifier, content: content, trigger: nil)
         
         // Add to notification center
