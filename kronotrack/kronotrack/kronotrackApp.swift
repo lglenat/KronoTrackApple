@@ -6,9 +6,10 @@
 //
 
 import SwiftUI
+import UserNotifications
 
 @main
-struct kronotrackApp: App {
+struct kronotrackApp: App {    
     var body: some Scene {
         WindowGroup {
             ContentView()

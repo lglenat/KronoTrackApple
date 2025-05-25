@@ -256,7 +256,6 @@ class AppViewModel: ObservableObject {
             }
         }.resume()
     }
-    // ...location tracking and upload logic will be added here...
 }
 
 // MARK: - MapPolylineView for SwiftUI
@@ -391,7 +390,6 @@ struct FloatingLabelTextField: View {
             Text(title)
                 .font(.caption)
                 .foregroundColor(isFocused || !text.isEmpty ? .accentColor : .secondary)
-                // .offset(y: isFocused || !text.isEmpty ? -20 : 0)
                 .animation(.easeInOut(duration: 0.2), value: isFocused || !text.isEmpty)
 
             TextField("", text: $text)
@@ -412,12 +410,14 @@ enum AlertType: Identifiable {
     case error(message: String)
     case locationPermission
     case preciseLocation
+    case notificationPermission
     
     var id: Int {
         switch self {
         case .error: return 0
         case .locationPermission: return 1
         case .preciseLocation: return 2
+        case .notificationPermission: return 3
         }
     }
     
@@ -426,6 +426,7 @@ enum AlertType: Identifiable {
         case .error: return "Erreur"
         case .locationPermission: return "Accès requis à la position en arrière plan"
         case .preciseLocation: return "Accès requis à la position exacte"
+        case .notificationPermission: return "Accès requis aux notifications"
         }
     }
     
@@ -434,6 +435,7 @@ enum AlertType: Identifiable {
         case .error(let message): return message
         case .locationPermission: return "Pour activer le suivi, veuillez autoriser l'accès à votre position \"Toujours\"."
         case .preciseLocation: return "Veuillez activer \"Position exacte\" dans les réglages d'accès à votre position."
+        case .notificationPermission: return "Pour recevoir des notifications du statut de suivi, veuillez autoriser les notifications pour cette application."
         }
     }
 }
@@ -492,15 +494,15 @@ struct ContentView: View {
         let preciseLocation = locationManager.manager.accuracyAuthorization == .fullAccuracy
         
         // Debug output
-        let statusText: String
-        switch locationStatus {
-        case .notDetermined: statusText = "notDetermined"
-        case .restricted: statusText = "restricted"
-        case .denied: statusText = "denied"
-        case .authorizedAlways: statusText = "authorizedAlways"
-        case .authorizedWhenInUse: statusText = "authorizedWhenInUse"
-        @unknown default: statusText = "unknown(\(locationStatus.rawValue))"
-        }
+        // let statusText: String
+        // switch locationStatus {
+        // case .notDetermined: statusText = "notDetermined"
+        // case .restricted: statusText = "restricted"
+        // case .denied: statusText = "denied"
+        // case .authorizedAlways: statusText = "authorizedAlways"
+        // case .authorizedWhenInUse: statusText = "authorizedWhenInUse"
+        // @unknown default: statusText = "unknown(\(locationStatus.rawValue))"
+        // }
         // print("Location status: \(statusText) (raw: \(locationStatus.rawValue)), Precise: \(preciseLocation)")
         
         if locationStatus != .authorizedAlways {
@@ -515,13 +517,47 @@ struct ContentView: View {
             return
         }
         
-        // Try to start tracking through the view model
+        // Check notification permission
+        UNUserNotificationCenter.current().getNotificationSettings { settings in
+            DispatchQueue.main.async {
+                switch settings.authorizationStatus {
+                case .notDetermined:
+                    // Request permission
+                    UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
+                        DispatchQueue.main.async {
+                            if granted {
+                                // Permission granted, proceed with tracking
+                                self.continueStartTracking()
+                            } else {
+                                // Permission denied, show warning but let user proceed if they want
+                                self.viewModel.isLoading = false
+                                self.currentAlert = .notificationPermission
+                            }
+                        }
+                    }
+                case .denied:
+                    // Notify user but don't block tracking
+                    self.viewModel.isLoading = false
+                    self.currentAlert = .notificationPermission
+                case .authorized, .provisional, .ephemeral:
+                    // Permission already granted, proceed with tracking
+                    self.continueStartTracking()
+                @unknown default:
+                    // Just proceed with tracking for any future status
+                    self.continueStartTracking()
+                }
+            }
+        }
+    }
+    
+    private func continueStartTracking() {
         viewModel.startTrackingIfPossible(locationManager) { success in
             DispatchQueue.main.async {
                 self.viewModel.isLoading = false
                 
                 if success {
                     // Tracking started successfully
+                    print("Tracking started successfully")
                     NotificationManager.shared.showTrackingNotification(isTracking: true)
                 } else if let errorMessage = self.viewModel.errorMessage {
                     // Show the error message from the view model
@@ -794,7 +830,7 @@ struct ContentView: View {
                         message: Text(message),
                         dismissButton: .default(Text("OK"))
                     )
-                case .locationPermission, .preciseLocation:
+                case .locationPermission, .preciseLocation, .notificationPermission:
                     return Alert(
                         title: Text(alertType.title),
                         message: Text(alertType.message),
@@ -832,6 +868,11 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         manager.distanceFilter = 100
         manager.pausesLocationUpdatesAutomatically = true
         manager.desiredAccuracy = kCLLocationAccuracyBest
+        
+        // Make sure the notification is shown when app goes to background
+        if isTracking {
+            NotificationManager.shared.showTrackingNotification(isTracking: true)
+        }
     }
     
     @objc private func appWillEnterForeground() {
@@ -839,44 +880,25 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         manager.pausesLocationUpdatesAutomatically = false
         manager.desiredAccuracy = kCLLocationAccuracyBest
     }
-    
-    func requestPermissions(completion: ((Bool, Bool, Bool) -> Void)? = nil) {
-        let status = CLLocationManager.authorizationStatus()
-        if status == .notDetermined {
-            manager.requestWhenInUseAuthorization()
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) {
-                self.requestPermissions(completion: completion)
-            }
-            return
-        } else if status == .authorizedWhenInUse {
-            manager.requestAlwaysAuthorization()
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) {
-                self.requestPermissions(completion: completion)
-            }
-            return
-        }
-        NotificationManager.shared.requestPermissions()
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            let newStatus = CLLocationManager.authorizationStatus()
-            let always = newStatus == .authorizedAlways
-            let granted = always || newStatus == .authorizedWhenInUse
-            let precise = self.manager.accuracyAuthorization == .fullAccuracy
-            completion?(granted, precise, always)
-        }
-    }
     func startTracking() {
         isTracking = true
         manager.startUpdatingLocation()
-        // No more view model access here
+        // Refresh notification on tracking start
+        NotificationManager.shared.showTrackingNotification(isTracking: true)
     }
     func stopTracking() {
         isTracking = false
         manager.stopUpdatingLocation()
+        
+        // Make sure notification is updated when tracking stops
+        NotificationManager.shared.showTrackingNotification(isTracking: false)
+        
         // End any background task if running
         if backgroundTask != .invalid {
             UIApplication.shared.endBackgroundTask(backgroundTask)
             backgroundTask = .invalid
         }
+        
         // Clear runner info when tracking stops
         if let appVM = UIApplication.shared.connectedScenes
             .compactMap({ ($0 as? UIWindowScene)?.windows.first?.rootViewController as? UIHostingController<ContentView> })
@@ -944,21 +966,6 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
                 self.backgroundTask = .invalid
             }
         }.resume()
-    }
-}
-
-class NotificationManager {
-    static let shared = NotificationManager()
-    private init() {}
-    func requestPermissions() {
-        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { _, _ in }
-    }
-    func showTrackingNotification(isTracking: Bool) {
-        let content = UNMutableNotificationContent()
-        content.title = isTracking ? NSLocalizedString("Krono Location: Tracking Active", comment: "Tracking active notification title") : NSLocalizedString("Krono Location: Tracking Stopped", comment: "Tracking stopped notification title")
-        content.body = isTracking ? NSLocalizedString("Your location is being uploaded every minute.", comment: "Tracking active notification body") : NSLocalizedString("Tracking has stopped.", comment: "Tracking stopped notification body")
-        let request = UNNotificationRequest(identifier: "trackingStatus", content: content, trigger: nil)
-        UNUserNotificationCenter.current().add(request, withCompletionHandler: nil)
     }
 }
 
