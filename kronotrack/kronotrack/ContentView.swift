@@ -167,9 +167,9 @@ class AppViewModel: ObservableObject {
         
         URLSession.shared.dataTask(with: req) { data, response, error in
             // Print API response for debugging
-            if let data = data, let responseString = String(data: data, encoding: .utf8) {
-                print("API Response: \(responseString)")
-            }
+            // if let data = data, let responseString = String(data: data, encoding: .utf8) {
+            //     print("API Response: \(responseString)")
+            // }
             
             // Handle network errors
             if let error = error {
@@ -428,7 +428,7 @@ enum AlertType: Identifiable {
         case .error: return "Erreur"
         case .locationServicesDisabled: return "Service de localisation"
         case .locationPermission: return "Position en arrière plan"
-        case .preciseLocation: return "Position exacte"
+        case .preciseLocation: return "Position exacte en arrière plan"
         case .notificationPermission: return "Notifications"
         }
     }
@@ -437,8 +437,8 @@ enum AlertType: Identifiable {
         switch self {
         case .error(let message): return message
         case .locationServicesDisabled: return "Pour démarrer le suivi, veuillez d'abord activer le service de localisation de votre appareil dans Réglages > Confidentialité et sécurité > Service the localisation."
-        case .locationPermission: return "Pour démarrer le suivi, veuillez d'abord autoriser l'accès à votre position \"Toujours\"."
-        case .preciseLocation: return "Pour démarrer le suivi, veuillez d'abord activer \"Position exacte\" dans les réglages d'accès à votre position."
+        case .locationPermission: return "Pour démarrer le suivi, veuillez d'abord autoriser l'accès à votre position exacte, \"Toujours\"."
+        case .preciseLocation: return "Pour démarrer le suivi, veuillez d'abord activer \"Position exacte\" et \"Toujours\" dans les réglages d'accès à votre position."
         case .notificationPermission: return "Pour démarrer le suivi, veuillez autoriser l'accès aux notifications."
         }
     }
@@ -491,70 +491,86 @@ struct ContentView: View {
     }
 
     private func handleStartTracking() {
-        // Set loading state immediately
         viewModel.isLoading = true
-        
-        // Check if location services are enabled
         if !CLLocationManager.locationServicesEnabled() {
             viewModel.isLoading = false
             currentAlert = .locationServicesDisabled
             return
         }
-        // Check permissions with visual feedback for all cases
         let locationStatus = CLLocationManager.authorizationStatus()
+        print("location status: \(locationStatus)")
         let preciseLocation = locationManager.manager.accuracyAuthorization == .fullAccuracy
-        
-        // Debug output
-        // let statusText: String
-        // switch locationStatus {
-        // case .notDetermined: statusText = "notDetermined"
-        // case .restricted: statusText = "restricted"
-        // case .denied: statusText = "denied"
-        // case .authorizedAlways: statusText = "authorizedAlways"
-        // case .authorizedWhenInUse: statusText = "authorizedWhenInUse"
-        // @unknown default: statusText = "unknown(\(locationStatus.rawValue))"
-        // }
-        // print("Location status: \(statusText) (raw: \(locationStatus.rawValue)), Precise: \(preciseLocation)")
-        
-        if locationStatus != .authorizedAlways {
+
+
+        if locationStatus == .notDetermined {
+            print("location status: notDetermined")
+            locationManager.awaitingAuthorization = true
+            locationManager.onAuthorizationChange = { status in
+                DispatchQueue.main.async {
+                    let preciseLocation = locationManager.manager.accuracyAuthorization == .fullAccuracy
+                    print("location precision high accuracy: \(preciseLocation)")
+
+                    if status == .authorizedWhenInUse  {
+                        print("User granted when in use, starting again to request always")
+                        handleStartTracking()
+                    } else if status == .denied {
+                        print("User denied location permissions")
+                        viewModel.isLoading = false
+                        currentAlert = .locationPermission
+                        return
+                    }
+                }
+            }
+            print("Requesting when in use authorization")
+            locationManager.manager.requestWhenInUseAuthorization()
+            return
+        }
+
+        if locationStatus == .denied {
+            print("location status: denied")
             viewModel.isLoading = false
             currentAlert = .locationPermission
             return
         }
-        
+
         if !preciseLocation {
             viewModel.isLoading = false
             currentAlert = .preciseLocation
             return
         }
-        
-        // Check notification permission
+
+        if locationStatus == .authorizedWhenInUse {
+            print("location status: authorizedWhenInUse")
+            print("Requesting always authorization")
+            locationManager.manager.requestAlwaysAuthorization()
+            locationPermissionCheckedContinue()
+            return
+        }
+
+        locationPermissionCheckedContinue()
+    }
+
+    private func locationPermissionCheckedContinue() {
         UNUserNotificationCenter.current().getNotificationSettings { settings in
             DispatchQueue.main.async {
                 switch settings.authorizationStatus {
                 case .notDetermined:
-                    // Request permission
                     UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
                         DispatchQueue.main.async {
                             if granted {
-                                // Permission granted, proceed with tracking
                                 self.continueStartTracking()
                             } else {
-                                // Permission denied, show warning but let user proceed if they want
                                 self.viewModel.isLoading = false
                                 self.currentAlert = .notificationPermission
                             }
                         }
                     }
                 case .denied:
-                    // Notify user but don't block tracking
                     self.viewModel.isLoading = false
                     self.currentAlert = .notificationPermission
                 case .authorized, .provisional, .ephemeral:
-                    // Permission already granted, proceed with tracking
                     self.continueStartTracking()
                 @unknown default:
-                    // Just proceed with tracking for any future status
                     self.continueStartTracking()
                 }
             }
@@ -861,18 +877,22 @@ struct ContentView: View {
 }
 
 class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
-    internal let manager = CLLocationManager() // Change from private to internal
+    internal let manager = CLLocationManager()
     @Published var userLocation: CLLocationCoordinate2D? = nil
     @Published var isTracking: Bool = false
     private var lastUpload: Date? = nil
     private var backgroundTask: UIBackgroundTaskIdentifier = .invalid
     private let uploadInterval: TimeInterval = 60 // seconds
+    // --- NEW: Track if we're awaiting authorization and provide a callback ---
+    var awaitingAuthorization: Bool = false
+    var onAuthorizationChange: ((CLAuthorizationStatus) -> Void)? = nil
+
     override init() {
         super.init()
         manager.allowsBackgroundLocationUpdates = true
         manager.delegate = self
         manager.pausesLocationUpdatesAutomatically = false
-        manager.desiredAccuracy = kCLLocationAccuracyBest
+        manager.desiredAccuracy = kCLLocationAccuracyNearestTenMeters
         manager.distanceFilter = kCLDistanceFilterNone
         // Observe app state changes
         NotificationCenter.default.addObserver(self, selector: #selector(appDidEnterBackground), name: UIApplication.didEnterBackgroundNotification, object: nil)
@@ -882,13 +902,13 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
     @objc private func appDidEnterBackground() {
         // manager.distanceFilter = 100
         // manager.pausesLocationUpdatesAutomatically = true
-        // manager.desiredAccuracy = kCLLocationAccuracyBest
+        manager.desiredAccuracy = kCLLocationAccuracyNearestTenMeters
     }
     
     @objc private func appWillEnterForeground() {
         manager.distanceFilter = kCLDistanceFilterNone
         manager.pausesLocationUpdatesAutomatically = false
-        // manager.desiredAccuracy = kCLLocationAccuracyBest
+        manager.desiredAccuracy = kCLLocationAccuracyBest
     }
     func startTracking() {
         isTracking = true
@@ -988,6 +1008,22 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
                 self.backgroundTask = .invalid
             }
         }.resume()
+    }
+    // --- NEW: Handle authorization changes (iOS 14+) ---
+    func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+        let status = manager.authorizationStatus
+        print("locationManagerDidChangeAuthorization status changed: \(status)")
+        if awaitingAuthorization {
+            awaitingAuthorization = false
+            onAuthorizationChange?(status)
+        }
+    }
+    // --- For iOS < 14 ---
+    func locationManager(_ manager: CLLocationManager, didChangeAuthorization status: CLAuthorizationStatus) {
+        if awaitingAuthorization {
+            awaitingAuthorization = false
+            onAuthorizationChange?(status)
+        }
     }
 }
 

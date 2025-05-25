@@ -3,7 +3,7 @@
   KronoTrack
 */
 
-"NSLocationWhenInUseUsageDescription" = "Cette application a besoin de votre position pour suivre votre progression pendant la compétition, même lorsque l'application est en arrière-plan.";
-"NSLocationAlwaysAndWhenInUseUsageDescription" = "Cette application a besoin de votre position pour suivre votre progression pendant la compétition, même lorsque l'application est en arrière-plan.";
-"NSLocationAlwaysUsageDescription" = "Cette application a besoin de votre position pour suivre votre progression pendant la compétition, même lorsque l'application est en arrière-plan.";
-"NSLocationUsageDescription" = "Cette application a besoin de votre position pour suivre votre progression pendant la compétition, même lorsque l'application est en arrière-plan.";
+"NSLocationWhenInUseUsageDescription" = "KronoTrack a besoin de votre position exacte lorsque l'app est active pour suivre votre progression pendant la course.";
+"NSLocationAlwaysAndWhenInUseUsageDescription" = "KronoTrack a besoin de votre position exacte pour suivre votre progression pendant la course y compris quand l'app est en arrière plan et que votre téléphone est verrouillé.";
+"NSLocationAlwaysUsageDescription" = "KronoTrack a besoin de votre position exacte pour suivre votre progression pendant la course y compris quand l'app est en arrière plan et que votre téléphone est verrouillé.";
+"NSLocationUsageDescription" = "KronoTrack a besoin de votre position exacte pour suivre votre progression pendant la course y compris quand l'app est en arrière plan et que votre téléphone est verrouillé.";
