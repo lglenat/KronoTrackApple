@@ -328,14 +328,14 @@ struct MapPolylineView: UIViewRepresentable {
                 if polyline.title == "glow" {
                     let renderer = MKPolylineRenderer(polyline: polyline)
                     renderer.strokeColor = UIColor.white.withAlphaComponent(0.55)
-                    renderer.lineWidth = 10
+                    renderer.lineWidth = 6
                     renderer.lineJoin = .round
                     renderer.lineCap = .round
                     return renderer
                 } else if polyline.title == "main" {
                     let renderer = MKPolylineRenderer(polyline: polyline)
                     renderer.strokeColor = UIColor(red: 120/255, green: 0.7, blue: 1.0, alpha: 1.0) // Bright purple/indigo
-                    renderer.lineWidth = 4
+                    renderer.lineWidth = 2 
                     renderer.lineJoin = .round
                     renderer.lineCap = .round
                     return renderer
