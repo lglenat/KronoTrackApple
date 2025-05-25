@@ -1,0 +1,9 @@
+/* 
+  InfoPlist.strings (English)
+  KronoTrack
+*/
+
+"NSLocationWhenInUseUsageDescription" = "This app needs your location to track your progress through the competition even when the app is in the background.";
+"NSLocationAlwaysAndWhenInUseUsageDescription" = "This app needs your location to track your progress through the competition even when the app is in the background.";
+"NSLocationAlwaysUsageDescription" = "This app needs your location to track your progress through the competition even when the app is in the background.";
+"NSLocationUsageDescription" = "This app needs your location to track your progress through the competition even when the app is in the background.";

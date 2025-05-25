@@ -10,9 +10,13 @@
 		<string>remote-notification</string>
 	</array>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>This app needs your location to track your race progress and upload your position, even in the background.</string>
+	<string>This app needs your location to track your progress through the competition even when the app is in the background.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
-	<string>This app needs your location at all times to track your race progress and upload your position, even in the background.</string>
+	<string>This app needs your location to track your progress through the competition even when the app is in the background.</string>
+	<key>NSLocationAlwaysUsageDescription</key>
+	<string>This app needs your location to track your progress through the competition even when the app is in the background.</string>
+	<key>NSLocationUsageDescription</key>
+	<string>This app needs your location to track your progress through the competition even when the app is in the background.</string>
 	<key>NSUserNotificationAlertStyle</key>
 	<string>alert</string>
 </dict>
