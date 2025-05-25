@@ -424,18 +424,18 @@ enum AlertType: Identifiable {
     var title: String {
         switch self {
         case .error: return "Erreur"
-        case .locationPermission: return "Accès requis à la position en arrière plan"
-        case .preciseLocation: return "Accès requis à la position exacte"
-        case .notificationPermission: return "Accès requis aux notifications"
+        case .locationPermission: return "Position en arrière plan"
+        case .preciseLocation: return "Position exacte"
+        case .notificationPermission: return "Notifications"
         }
     }
     
     var message: String {
         switch self {
         case .error(let message): return message
-        case .locationPermission: return "Pour activer le suivi, veuillez autoriser l'accès à votre position \"Toujours\"."
-        case .preciseLocation: return "Veuillez activer \"Position exacte\" dans les réglages d'accès à votre position."
-        case .notificationPermission: return "Pour recevoir des notifications du statut de suivi, veuillez autoriser les notifications pour cette application."
+        case .locationPermission: return "Pour démarrer le suivi, veuillez d'abord autoriser l'accès à votre position \"Toujours\"."
+        case .preciseLocation: return "Pour démarrer le suivi, veuillez d'abord activer \"Position exacte\" dans les réglages d'accès à votre position."
+        case .notificationPermission: return "Pour démarrer le suivi, veuillez autoriser l'accès aux notifications."
         }
     }
 }
@@ -558,7 +558,6 @@ struct ContentView: View {
                 if success {
                     // Tracking started successfully
                     print("Tracking started successfully")
-                    NotificationManager.shared.showTrackingNotification(isTracking: true)
                 } else if let errorMessage = self.viewModel.errorMessage {
                     // Show the error message from the view model
                     self.currentAlert = .error(message: errorMessage)
@@ -636,7 +635,6 @@ struct ContentView: View {
                                     if viewModel.isTracking {
                                         locationManager.stopTracking()
                                         viewModel.isTracking = false
-                                        NotificationManager.shared.showTrackingNotification(isTracking: false)
                                     } else {
                                         // Use the dedicated method instead of inline logic
                                         handleStartTracking()
@@ -868,11 +866,6 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         manager.distanceFilter = 100
         manager.pausesLocationUpdatesAutomatically = true
         manager.desiredAccuracy = kCLLocationAccuracyBest
-        
-        // Make sure the notification is shown when app goes to background
-        if isTracking {
-            NotificationManager.shared.showTrackingNotification(isTracking: true)
-        }
     }
     
     @objc private func appWillEnterForeground() {
@@ -883,15 +876,27 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
     func startTracking() {
         isTracking = true
         manager.startUpdatingLocation()
-        // Refresh notification on tracking start
-        NotificationManager.shared.showTrackingNotification(isTracking: true)
+        
+        // Ensure we update the status immediately and handle notifications
+        DispatchQueue.main.async {
+            // Show notification in a small delay to ensure it appears after the UI is updated
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                // Refresh notification on tracking start
+                NotificationManager.shared.showTrackingNotification(isTracking: true)
+                print("📍 Tracking started and notification requested")
+            }
+        }
     }
+    
     func stopTracking() {
         isTracking = false
         manager.stopUpdatingLocation()
         
         // Make sure notification is updated when tracking stops
-        NotificationManager.shared.showTrackingNotification(isTracking: false)
+        DispatchQueue.main.async {
+            NotificationManager.shared.showTrackingNotification(isTracking: false)
+            print("🛑 Tracking stopped and notifications cleared")
+        }
         
         // End any background task if running
         if backgroundTask != .invalid {
