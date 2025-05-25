@@ -388,6 +388,8 @@ struct ContentView: View {
     @State private var autoNavTimer: Timer? = nil
     @State private var programmaticRegionChangeID = UUID() // triggers region change
     @State private var isDrawerOpen = false // NEW: controls drawer menu
+    // New state for location settings alert
+    @State private var showingLocationSettingsAlert = false
 
     init() {
         let vm = AppViewModel()
@@ -414,6 +416,13 @@ struct ContentView: View {
         autoNavTimer?.invalidate()
         autoNavTimer = Timer.scheduledTimer(withTimeInterval: 1.5, repeats: false) { _ in
             isAutoNavigating = false
+        }
+    }
+
+    // Helper to open app settings
+    private func openAppSettings() {
+        if let url = URL(string: UIApplication.openSettingsURLString) {
+            UIApplication.shared.open(url)
         }
     }
 
@@ -487,7 +496,13 @@ struct ContentView: View {
                                     } else {
                                         viewModel.startTrackingIfPossible(locationManager: locationManager) { success in
                                             if (!success) {
-                                                showingAlert = true
+                                                // Check if the error is location permission
+                                                let status = CLLocationManager.authorizationStatus()
+                                                if status == .denied || status == .restricted {
+                                                    showingLocationSettingsAlert = true
+                                                } else {
+                                                    showingAlert = true
+                                                }
                                             } else {
                                                 NotificationManager.shared.showTrackingNotification(isTracking: true)
                                             }
@@ -673,8 +688,20 @@ struct ContentView: View {
             .onAppear {
                 viewModel.fetchCourses()
             }
+            // Main error alert (for non-permission errors)
             .alert(isPresented: $showingAlert) {
                 Alert(title: Text("Erreur"), message: Text(viewModel.errorMessage ?? "Erreur inconnue"), dismissButton: .default(Text("OK")))
+            }
+            // Location permission alert with Settings button
+            .alert(isPresented: $showingLocationSettingsAlert) {
+                Alert(
+                    title: Text("Autorisation de localisation requise"),
+                    message: Text("Pour activer le suivi, veuillez autoriser l'accès à votre position dans les Réglages."),
+                    primaryButton: .default(Text("Ouvrir les Réglages")) {
+                        openAppSettings()
+                    },
+                    secondaryButton: .cancel(Text("Annuler"))
+                )
             }
         }
     }
