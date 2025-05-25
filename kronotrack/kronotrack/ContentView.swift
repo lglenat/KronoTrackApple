@@ -10,6 +10,7 @@ import MapKit
 import CoreLocation
 import UIKit
 import UserNotifications
+import Combine
 
 struct Course: Identifiable, Codable, Hashable {
     let id: String
@@ -412,6 +413,7 @@ enum AlertType: Identifiable {
     case locationPermission
     case preciseLocation
     case notificationPermission
+    case trackingDisabled // NEW: dedicated alert for tracking disabled
     
     var id: Int {
         switch self {
@@ -420,6 +422,7 @@ enum AlertType: Identifiable {
         case .locationPermission: return 1
         case .preciseLocation: return 2
         case .notificationPermission: return 3
+        case .trackingDisabled: return 5 // NEW
         }
     }
     
@@ -430,6 +433,7 @@ enum AlertType: Identifiable {
         case .locationPermission: return "Position en arrière plan"
         case .preciseLocation: return "Position exacte en arrière plan"
         case .notificationPermission: return "Notifications"
+        case .trackingDisabled: return "Suivi désactivé" // NEW
         }
     }
     
@@ -440,6 +444,7 @@ enum AlertType: Identifiable {
         case .locationPermission: return "Pour démarrer le suivi, veuillez d'abord autoriser l'accès à votre position exacte, \"Toujours\"."
         case .preciseLocation: return "Pour démarrer le suivi, veuillez d'abord activer \"Position exacte\" et \"Toujours\" dans les réglages d'accès à votre position."
         case .notificationPermission: return "Pour démarrer le suivi, veuillez autoriser l'accès aux notifications."
+        case .trackingDisabled: return "Le suivi a été désactivé car les autorisations d'accès à la position ont changé, ou le service de localisation a été désactivé."
         }
     }
 }
@@ -454,6 +459,7 @@ struct ContentView: View {
     @State private var autoNavTimer: Timer? = nil
     @State private var programmaticRegionChangeID = UUID() // triggers region change
     @State private var isDrawerOpen = false // NEW: controls drawer menu
+    @State private var cancellables: Set<AnyCancellable> = [] // NEW
 
     init() {
         let vm = AppViewModel()
@@ -823,6 +829,14 @@ struct ContentView: View {
             }
             .onAppear {
                 viewModel.fetchCourses()
+                setupLocationTrackingDisabledAlertObserver()
+                // Propagate isTracking from LocationManager to viewModel
+                locationManager.$isTracking
+                    .receive(on: RunLoop.main)
+                    .sink { newValue in
+                        viewModel.isTracking = newValue
+                    }
+                    .store(in: &cancellables)
             }
             // Unified alert system for all types of alerts
             .alert(item: $currentAlert) { alertType in
@@ -834,6 +848,12 @@ struct ContentView: View {
                         dismissButton: .default(Text("OK"))
                     )
                 case .locationServicesDisabled:
+                    return Alert(
+                        title: Text(alertType.title),
+                        message: Text(alertType.message),
+                        dismissButton: .default(Text("OK"))
+                    )
+                case .trackingDisabled:
                     return Alert(
                         title: Text(alertType.title),
                         message: Text(alertType.message),
@@ -992,6 +1012,36 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         let status = manager.authorizationStatus
         print("locationManagerDidChangeAuthorization status changed: \(status)")
         
+        // Check if location services are enabled
+        if isTracking && !CLLocationManager.locationServicesEnabled() {
+            print("Location services disabled, stopping tracking")
+            self.stopTracking() 
+            isTracking = false
+            NotificationCenter.default.post(name: NSNotification.Name("LocationTrackingDisabledAlert"), object: AlertType.trackingDisabled)
+            NotificationManager.shared.showSimpleNotification(title: "Suivi désactivé", body: "Le suivi a été arrêté car le service de localisation a été désactivé.")
+            return
+        }
+
+        // If not authorizedAlways, stop tracking and alert
+        if isTracking && status != .authorizedAlways {
+            print("Authorization lost (not always authorized), stopping tracking")
+            self.stopTracking()
+            isTracking = false
+            NotificationCenter.default.post(name: NSNotification.Name("LocationTrackingDisabledAlert"), object: AlertType.trackingDisabled)
+            NotificationManager.shared.showSimpleNotification(title: "Suivi désactivé", body: "Le suivi a été arrêté car l'autorisation de position \"Toujours\" n'est plus accordée.")
+            return
+        }
+
+        let preciseLocation = manager.accuracyAuthorization == .fullAccuracy
+        if isTracking && !preciseLocation {
+            print("Precise location lost, stopping tracking")
+            self.stopTracking()
+            isTracking = false
+            NotificationCenter.default.post(name: NSNotification.Name("LocationTrackingDisabledAlert"), object: AlertType.trackingDisabled)
+            NotificationManager.shared.showSimpleNotification(title: "Suivi désactivé", body: "Le suivi a été arrêté car l'autorisation de position exacte n'est plus accordée.")
+            return
+        }
+
         if status == .notDetermined {
             print("Requesting when in use authorization")
             manager.requestWhenInUseAuthorization()
@@ -1012,6 +1062,17 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         if status == .authorizedAlways {
             print("Authorized always, nothing to do")
             return
+        }
+    }
+}
+
+// --- Add observer in ContentView to show alert when tracking is disabled ---
+extension ContentView {
+    private func setupLocationTrackingDisabledAlertObserver() {
+        NotificationCenter.default.addObserver(forName: NSNotification.Name("LocationTrackingDisabledAlert"), object: nil, queue: .main) { notification in
+            if let alertType = notification.object as? AlertType {
+                self.currentAlert = alertType
+            }
         }
     }
 }
