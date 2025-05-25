@@ -501,8 +501,6 @@ struct ContentView: View {
 
         let locationStatus = CLLocationManager.authorizationStatus()
         print("location status: \(locationStatus)")
-        let preciseLocation = locationManager.manager.accuracyAuthorization == .fullAccuracy
-        print("precise location: \(preciseLocation)")
 
         if locationStatus == .notDetermined {
             print("Requesting when in use authorization from handlestarttracking")
@@ -518,6 +516,8 @@ struct ContentView: View {
             return
         }
 
+        let preciseLocation = locationManager.manager.accuracyAuthorization == .fullAccuracy
+        print("precise location: \(preciseLocation)")
         if !preciseLocation {
             print("location status: precise location not granted")
             viewModel.isLoading = false
