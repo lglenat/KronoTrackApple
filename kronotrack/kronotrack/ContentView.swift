@@ -568,6 +568,7 @@ struct ContentView: View {
                                     .clipShape(Circle())
                                     .shadow(radius: 2)
                             }
+                            .disabled(!viewModel.isTracking)
                             Button(action: {
                                 if let userLoc = locationManager.userLocation {
                                     let region = MKCoordinateRegion(center: userLoc, span: viewModel.mapRegion.span)
@@ -581,6 +582,7 @@ struct ContentView: View {
                                     .clipShape(Circle())
                                     .shadow(radius: 2)
                             }
+                            .disabled(!viewModel.isTracking)
                         }
                         .padding(.trailing, 18)
                         .padding(.bottom, 32)
@@ -640,7 +642,7 @@ struct ContentView: View {
                             Divider().padding(.horizontal, 8)
                             Spacer().frame(height: 16)
                             Link("Politique de confidentialité", destination: URL(string: "https://kronotiming.fr/privacy")!)
-                                .padding(.horizontal, 24)
+                                .padding(.horizontal, 0)
                                 .padding(.vertical, 12)
                             Spacer()
                         }
