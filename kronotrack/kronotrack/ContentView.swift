@@ -140,7 +140,7 @@ class AppViewModel: ObservableObject {
         // 1. Validate input fields
         guard let course = selectedCourse, !bib.isEmpty, birthYear.count == 4, code.count == 6 else {
             DispatchQueue.main.async {
-                self.errorMessage = NSLocalizedString("Veuillez remplir tous les champs correctement.", comment: "Missing fields")
+                self.errorMessage = NSLocalizedString("Please fill in all fields.", comment: "Missing fields")
                 self.isLoading = false
             }
             completion(false)
@@ -177,7 +177,7 @@ class AppViewModel: ObservableObject {
                 print("API Error: \(error.localizedDescription)")
                 DispatchQueue.main.async {
                     self.isLoading = false
-                    self.errorMessage = NSLocalizedString("Erreur réseau ou serveur: \(error.localizedDescription)", comment: "Network error")
+                    self.errorMessage = NSLocalizedString("Server or network error", comment: "network error") + ": \(error.localizedDescription)"
                     completion(false)
                 }
                 return
@@ -188,7 +188,7 @@ class AppViewModel: ObservableObject {
                 print("API HTTP Error: \(httpResponse.statusCode)")
                 DispatchQueue.main.async {
                     self.isLoading = false
-                    self.errorMessage = NSLocalizedString("Erreur serveur: \(httpResponse.statusCode)", comment: "Server error")
+                    self.errorMessage = NSLocalizedString("Server error", comment: "Server error")
                     completion(false)
                 }
                 return
@@ -199,7 +199,7 @@ class AppViewModel: ObservableObject {
                   let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
                 DispatchQueue.main.async {
                     self.isLoading = false
-                    self.errorMessage = NSLocalizedString("Erreur de décodage de la réponse.", comment: "JSON decoding error")
+                    self.errorMessage = NSLocalizedString("Failed to decode response.", comment: "JSON decoding error")
                     completion(false)
                 }
                 return
@@ -574,7 +574,7 @@ struct ContentView: View {
                     self.currentAlert = .error(message: errorMessage)
                 } else {
                     // Generic error case
-                    self.currentAlert = .error(message: "Erreur lors du démarrage du suivi.")
+                    self.currentAlert = .error(message: NSLocalizedString("Start tracking error", comment: "start error"))
                 }
             }
         }
@@ -615,7 +615,7 @@ struct ContentView: View {
                     // Controls card moved up
                     HStack {
                         VStack(spacing: 4) {
-                            Picker("Course", selection: $viewModel.selectedCourse) {
+                            Picker(NSLocalizedString("Race", comment: "Race"), selection: $viewModel.selectedCourse) {
                                 ForEach(viewModel.courses) { course in
                                     Text(course.name).tag(course as Course?)
                                 }
@@ -801,14 +801,14 @@ struct ContentView: View {
                             HStack {
                                 Image(systemName: "lock.fill")
                                     .foregroundColor(.accentColor)
-                                Link("Politique de confidentialité", destination: URL(string: "https://kronotiming.fr/privacy")!)
+                                Link(NSLocalizedString("Privacy Policy", comment: "privacy"), destination: URL(string: "https://kronotiming.fr/privacy")!)
                             }
                             .padding(.horizontal, 4)
                             .padding(.vertical, 12)
                             HStack {
                                 Image(systemName: "flag.checkered")
                                     .foregroundColor(.accentColor)
-                                Link("Résultats", destination: URL(string: "https://live.kronotiming.fr/results")!)
+                                Link(NSLocalizedString("Results", comment: "results"), destination: URL(string: "https://live.kronotiming.fr/results")!)
                             }
                             .padding(.horizontal, 4)
                             .padding(.vertical, 12)
@@ -857,10 +857,10 @@ struct ContentView: View {
                     return Alert(
                         title: Text(NSLocalizedString(alertType.titleKey, comment: "")),
                         message: Text(NSLocalizedString(alertType.messageKey ?? "", comment: "")),
-                        primaryButton: .default(Text("Ouvrir les réglages")) {
+                        primaryButton: .default(Text(NSLocalizedString("Open app settings", comment: "app settings"))) {
                             openAppSettings()
                         },
-                        secondaryButton: .cancel(Text("Annuler"))
+                        secondaryButton: .cancel(Text(NSLocalizedString("Cancel", comment: "cancel")))
                     )
                 }
             }

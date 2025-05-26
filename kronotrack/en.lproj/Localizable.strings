@@ -1,6 +1,6 @@
 /* KronoTrack Localizable Strings (English) */
 
-"Course" = "Course";
+"Course" = "Race";
 "Bib Number" = "Bib Number";
 "Birth Year" = "Birth Year";
 "Race Code" = "Race Code";
@@ -9,14 +9,20 @@
 "Stop Tracking" = "Stop Tracking";
 "KronoTrack" = "KronoTrack";
 "Privacy Policy" = "Privacy Policy";
-"Krono Location: Tracking Active" = "Krono Location: Tracking Active";
-"Your location is being uploaded every minute." = "Your location is being uploaded every minute.";
+"KronoTrack: location tracking active." = "KronoTrack: location tracking active.";
+"Background location tracking enabled." = "Background location tracking enabled.";
+"Results" = "Results";
+"Please fill in all fields." = "Please fill in all fields.";
 
 /* Location Usage Descriptions */
 "This app needs your location to track your progress through the competition even when the app is in the background." = "This app needs your location to track your progress through the competition even when the app is in the background.";
 
 /* Error and Alert Strings */
+"Start tracking error" = "Start tracking error";
+"Failed to decode response." = "Failed to decode response.";
 "Error" = "Error";
+"Server error" = "Server error";
+"Server or network error" = "Server or network error";
 "Location Services" = "Location Services";
 "Background Location" = "Background Location";
 "Precise Location" = "Precise Location";
@@ -28,5 +34,5 @@
 "To start tracking, please allow notifications." = "To start tracking, please allow notifications.";
 "Tracking has been disabled because location permissions changed or Location Services were turned off." = "Tracking has been disabled because location permissions changed or Location Services were turned off.";
 "OK" = "OK";
-"Open Settings" = "Open Settings";
+"Open app settings" = "Open app settings";
 "Cancel" = "Cancel";

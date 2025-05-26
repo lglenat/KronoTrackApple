@@ -9,14 +9,20 @@
 "Stop Tracking" = "Arrêter le suivi";
 "KronoTrack" = "KronoTrack";
 "Privacy Policy" = "Politique de confidentialité";
-"Krono Location: Tracking Active" = "Krono Localisation : Suivi actif";
-"Your location is being uploaded every minute." = "Votre position est suivie et envoyée au serveur KronoTiming une fois par minute.";
+"KronoTrack: location tracking active." = "KronoTrack : suivi de position activé.";
+"Background location tracking enabled." = "Suivi de position en arrière plan activé.";
+"Results" = "Résultats";
+"Please fill in all fields." = "Veuillez remplir tous les champs correctement.";
 
 /* Location Usage Descriptions */
 "This app needs your location to track your progress through the competition even when the app is in the background." = "Cette application a besoin de votre position pour suivre votre progression pendant la compétition, même lorsque l'application est en arrière-plan.";
 
 /* Error and Alert Messages */
 "Error" = "Erreur";
+"Server error" = "Erreur serveur";
+"Server or network error" = "Erreur serveur ou réseau.";
+"Start tracking error" = "Erreur lors du démarrage du suivi.";
+"Failed to decode response." = "Erreur de décodage de la réponse.";
 "Location Services" = "Service de localisation";
 "Background Location" = "Position en arrière plan";
 "Precise Location" = "Position exacte en arrière plan";
@@ -28,5 +34,5 @@
 "To start tracking, please allow notifications." = "Pour démarrer le suivi, veuillez autoriser l'accès aux notifications.";
 "Tracking has been disabled because location permissions changed or Location Services were turned off." = "Le suivi a été désactivé car les autorisations d'accès à la position ont changé, ou le service de localisation a été désactivé.";
 "OK" = "OK";
-"Open Settings" = "Ouvrir les réglages";
+"Open app settings" = "Ouvrir les réglages";
 "Cancel" = "Annuler";

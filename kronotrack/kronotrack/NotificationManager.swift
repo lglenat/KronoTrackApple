@@ -21,8 +21,8 @@ class NotificationManager {
     
     private func showTrackingActiveNotification() {
         let content = UNMutableNotificationContent()
-        content.title = NSLocalizedString("Krono Location: Tracking Active", comment: "Tracking active notification title")
-        content.body = NSLocalizedString("Your location is being uploaded every minute.", comment: "Tracking active notification body")
+        content.title = NSLocalizedString("KronoTrack: location tracking active.", comment: "Tracking active notification title")
+        content.body = NSLocalizedString("Background location tracking enabled.", comment: "Tracking active notification body")
         content.sound = .default
         
         // Create a simple request with no trigger (delivers immediately)
