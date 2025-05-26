@@ -899,8 +899,9 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
     
     @objc private func appDidEnterBackground() {
         // manager.distanceFilter = 100
-        // manager.pausesLocationUpdatesAutomatically = true
         manager.desiredAccuracy = kCLLocationAccuracyNearestTenMeters
+        // manager.desiredAccuracy = kCLLocationAccuracyBest
+        manager.distanceFilter = kCLDistanceFilterNone
     }
     
     @objc private func appWillEnterForeground() {
@@ -911,6 +912,7 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
     func startTracking() {
         isTracking = true
         manager.startUpdatingLocation()
+        // manager.startMonitoringSignificantLocationChanges()
         
         // Ensure we update the status immediately and handle notifications
         DispatchQueue.main.async {
