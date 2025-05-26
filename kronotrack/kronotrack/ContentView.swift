@@ -463,15 +463,18 @@ struct MapPolylineView: UIViewRepresentable {
             // Customize marker color/icon based on type
             let type = annotation.title ?? ""
             switch type {
-            case NSLocalizedString("Water", comment: "marker type"):
-                view?.markerTintColor = .systemBlue
-                view?.glyphImage = UIImage(systemName: "drop.fill")
-            case NSLocalizedString("Food", comment: "marker type"):
-                view?.markerTintColor = .systemBrown
-                view?.glyphImage = UIImage(systemName: "fork.knife")
             case NSLocalizedString("Signal", comment: "marker type"):
                 view?.markerTintColor = .systemOrange
                 view?.glyphImage = UIImage(systemName: "figure.wave")
+                view?.displayPriority = .defaultLow
+            case NSLocalizedString("Water", comment: "marker type"):
+                view?.markerTintColor = .systemBlue
+                view?.glyphImage = UIImage(systemName: "drop.fill")
+                view?.displayPriority = .defaultHigh
+            case NSLocalizedString("Food", comment: "marker type"):
+                view?.markerTintColor = .systemBrown
+                view?.glyphImage = UIImage(systemName: "fork.knife")
+                view?.displayPriority = .defaultHigh
             case NSLocalizedString("Start", comment: "marker type"):
                 view?.markerTintColor = .systemGreen
                 view?.glyphImage = UIImage(systemName: "flag.fill")
