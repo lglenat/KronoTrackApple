@@ -4,12 +4,11 @@
 <dict>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSUserNotificationAlertStyle</key>
+	<string>alert</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>location</string>
-		<string>remote-notification</string>
 	</array>
-	<key>NSUserNotificationAlertStyle</key>
-	<string>alert</string>
 </dict>
 </plist>

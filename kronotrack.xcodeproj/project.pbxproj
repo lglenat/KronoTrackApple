@@ -466,7 +466,6 @@
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.sports";
 				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "This app needs your location to track your progress through the competition even when the app is in the background.";
 				INFOPLIST_KEY_NSLocationAlwaysUsageDescription = "This app needs your location to track your progress through the competition even when the app is in the background.";
-				INFOPLIST_KEY_NSLocationUsageDescription = "This app needs your location to track your progress through the competition even when the app is in the background.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "This app needs your location to track your progress through the competition even when the app is in the background.";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
