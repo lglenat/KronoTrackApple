@@ -884,7 +884,7 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         manager.allowsBackgroundLocationUpdates = true
         manager.delegate = self
         manager.pausesLocationUpdatesAutomatically = false
-        manager.desiredAccuracy = kCLLocationAccuracyNearestTenMeters
+        manager.desiredAccuracy = kCLLocationAccuracyBest
         manager.distanceFilter = kCLDistanceFilterNone
         // Observe app state changes
         NotificationCenter.default.addObserver(self, selector: #selector(appDidEnterBackground), name: UIApplication.didEnterBackgroundNotification, object: nil)
@@ -892,15 +892,14 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
     }
     
     @objc private func appDidEnterBackground() {
-        // manager.distanceFilter = 100
+        manager.distanceFilter = 100
+        // manager.distanceFilter = kCLDistanceFilterNone
         manager.desiredAccuracy = kCLLocationAccuracyNearestTenMeters
         // manager.desiredAccuracy = kCLLocationAccuracyBest
-        manager.distanceFilter = kCLDistanceFilterNone
     }
     
     @objc private func appWillEnterForeground() {
         manager.distanceFilter = kCLDistanceFilterNone
-        manager.pausesLocationUpdatesAutomatically = false
         manager.desiredAccuracy = kCLLocationAccuracyBest
     }
     func startTracking() {
