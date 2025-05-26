@@ -652,7 +652,7 @@ struct ContentView: View {
                                     }
                                 }
                                 .buttonStyle(.borderedProminent)
-                                .disabled(viewModel.isLoading) // Disable button while loading
+                                .disabled(viewModel.isLoading || viewModel.bib.isEmpty || viewModel.birthYear.isEmpty || viewModel.code.isEmpty) // Disable if any field is empty or loading
                                 .opacity(viewModel.isLoading ? 0.5 : 1.0) // Dim button while loading
                             }
                         }
