@@ -358,34 +358,44 @@ struct MapPolylineView: UIViewRepresentable {
     }
 
     func updateUIView(_ mapView: MKMapView, context: Context) {
-        // Remove overlays and annotations
-        mapView.removeOverlays(mapView.overlays)
-        mapView.removeAnnotations(mapView.annotations)
-        // Draw polyline
-        if let track = trackData, !track.points.isEmpty {
-            let glowPolyline = MKPolyline(coordinates: track.points, count: track.points.count)
-            glowPolyline.title = "glow"
-            mapView.addOverlay(glowPolyline, level: .aboveLabels)
-            let mainPolyline = MKPolyline(coordinates: track.points, count: track.points.count)
-            mainPolyline.title = "main"
-            mapView.addOverlay(mainPolyline, level: .aboveLabels)
-            // Add markers
-            for marker in track.markers {
-                let annotation = MKPointAnnotation()
-                annotation.coordinate = marker.coordinate
-                annotation.title = markerTypeToLocalizedTitle(marker.type)
-                mapView.addAnnotation(annotation)
-            }
-            // Add start marker at first point if not present
-            if let first = track.points.first, !track.markers.contains(where: { $0.type == "start" }) {
-                let annotation = MKPointAnnotation()
-                annotation.coordinate = first
-                annotation.title = markerTypeToLocalizedTitle("start")
-                mapView.addAnnotation(annotation)
+        // --- Flicker fix: Only update overlays/annotations if trackData has changed ---
+        struct Cache {
+            static var lastTrackData: TrackData? = nil
+        }
+        let trackChanged = Cache.lastTrackData != trackData
+        Cache.lastTrackData = trackData
+
+        if trackChanged {
+            // Remove overlays
+            mapView.removeOverlays(mapView.overlays)
+            // Remove all annotations except user location
+            let nonUserAnnotations = mapView.annotations.filter { !($0 is MKUserLocation) }
+            mapView.removeAnnotations(nonUserAnnotations)
+            // Draw polyline and add markers
+            if let track = trackData, !track.points.isEmpty {
+                let glowPolyline = MKPolyline(coordinates: track.points, count: track.points.count)
+                glowPolyline.title = "glow"
+                mapView.addOverlay(glowPolyline, level: .aboveLabels)
+                let mainPolyline = MKPolyline(coordinates: track.points, count: track.points.count)
+                mainPolyline.title = "main"
+                mapView.addOverlay(mainPolyline, level: .aboveLabels)
+                // Add markers
+                for marker in track.markers {
+                    let annotation = MKPointAnnotation()
+                    annotation.coordinate = marker.coordinate
+                    annotation.title = markerTypeToLocalizedTitle(marker.type)
+                    mapView.addAnnotation(annotation)
+                }
+                // Add start marker at first point if not present
+                if let first = track.points.first, !track.markers.contains(where: { $0.type == "start" }) {
+                    let annotation = MKPointAnnotation()
+                    annotation.coordinate = first
+                    annotation.title = markerTypeToLocalizedTitle("start")
+                    mapView.addAnnotation(annotation)
+                }
             }
         }
-        // --- NEW: Animate to region if changed or programmaticRegionChangeID changes ---
-        // Use associated object to store last region and last programmaticRegionChangeID
+        // --- Animate to region if changed or programmaticRegionChangeID changes ---
         struct Holder { static var lastRegion: MKCoordinateRegion?; static var lastID: UUID? }
         let regionChanged = Holder.lastRegion == nil ||
             Holder.lastRegion!.center.latitude != region.center.latitude ||
