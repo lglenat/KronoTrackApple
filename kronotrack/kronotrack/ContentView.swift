@@ -164,7 +164,9 @@ class AppViewModel: ObservableObject {
         req.httpBody = try? JSONSerialization.data(withJSONObject: payload)
         
         // Debug output for API call
+        #if DEBUG
         print("Sending API request: \(payload)")
+        #endif
         
         URLSession.shared.dataTask(with: req) { data, response, error in
             // Print API response for debugging
@@ -174,7 +176,9 @@ class AppViewModel: ObservableObject {
             
             // Handle network errors
             if let error = error {
+#if DEBUG
                 print("API Error: \(error.localizedDescription)")
+#endif
                 DispatchQueue.main.async {
                     self.isLoading = false
                     self.errorMessage = NSLocalizedString("Server or network error", comment: "network error") + ": \(error.localizedDescription)"
@@ -185,7 +189,9 @@ class AppViewModel: ObservableObject {
             
             // Handle HTTP errors
             if let httpResponse = response as? HTTPURLResponse, !(200...299).contains(httpResponse.statusCode) {
+#if DEBUG
                 print("API HTTP Error: \(httpResponse.statusCode)")
+#endif
                 DispatchQueue.main.async {
                     self.isLoading = false
                     self.errorMessage = NSLocalizedString("Server error", comment: "Server error")
@@ -506,26 +512,36 @@ struct ContentView: View {
         }
 
         let locationStatus = CLLocationManager.authorizationStatus()
+#if DEBUG
         print("location status: \(locationStatus)")
+#endif
 
         if locationStatus == .notDetermined {
+#if DEBUG
             print("Requesting when in use authorization from handlestarttracking")
+#endif
             viewModel.isLoading = false
             locationManager.manager.requestWhenInUseAuthorization()
             return
         }
 
         if locationStatus != .authorizedAlways {
+#if DEBUG
             print("location status: not always authorized, user has to manually change")
+#endif
             viewModel.isLoading = false
             currentAlert = .locationPermission
             return
         }
 
         let preciseLocation = locationManager.manager.accuracyAuthorization == .fullAccuracy
+#if DEBUG
         print("precise location: \(preciseLocation)")
+#endif
         if !preciseLocation {
+#if DEBUG
             print("location status: precise location not granted")
+#endif
             viewModel.isLoading = false
             currentAlert = .preciseLocation
             return
@@ -567,8 +583,10 @@ struct ContentView: View {
                 self.viewModel.isLoading = false
                 
                 if success {
-                    // Tracking started successfully
+#if DEBUG
                     print("Tracking started successfully")
+#endif
+                    // Tracking started successfully
                 } else if let errorMessage = self.viewModel.errorMessage {
                     // Show the error message from the view model
                     self.currentAlert = .error(message: errorMessage)
@@ -850,13 +868,13 @@ struct ContentView: View {
                 case .locationServicesDisabled, .trackingDisabled:
                     return Alert(
                         title: Text(NSLocalizedString(alertType.titleKey, comment: "")),
-                        message: Text(NSLocalizedString(alertType.messageKey ?? "", comment: "")),
+                        message: Text(alertType.messageKey != nil && !alertType.messageKey!.isEmpty ? NSLocalizedString(alertType.messageKey!, comment: "") : ""),
                         dismissButton: .default(Text("OK"))
                     )
                 case .locationPermission, .preciseLocation, .notificationPermission:
                     return Alert(
                         title: Text(NSLocalizedString(alertType.titleKey, comment: "")),
-                        message: Text(NSLocalizedString(alertType.messageKey ?? "", comment: "")),
+                        message: Text(alertType.messageKey != nil && !alertType.messageKey!.isEmpty ? NSLocalizedString(alertType.messageKey!, comment: "") : ""),
                         primaryButton: .default(Text(NSLocalizedString("Open app settings", comment: "app settings"))) {
                             openAppSettings()
                         },
@@ -913,7 +931,9 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
                 // Refresh notification on tracking start
                 NotificationManager.shared.showTrackingNotification(isTracking: true)
+#if DEBUG
                 print("📍 Tracking started and notification requested")
+#endif
             }
         }
     }
@@ -925,7 +945,9 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         // Make sure notification is updated when tracking stops
         DispatchQueue.main.async {
             NotificationManager.shared.showTrackingNotification(isTracking: false)
+#if DEBUG
             print("🛑 Tracking stopped and notifications cleared")
+#endif
         }
         
         // End any background task if running
@@ -949,7 +971,9 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         // Throttle uploads to once per 60s
         let now = Date()
         if let last = lastUpload, now.timeIntervalSince(last) < uploadInterval {
+#if DEBUG
             print("[LocationManager] Skipping upload, last upload was \(now.timeIntervalSince(last))s ago")
+#endif
             return
         }
         lastUpload = now
@@ -964,7 +988,9 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         let code = UserDefaults.standard.string(forKey: "code") ?? ""
         let mainEvent = UserDefaults.standard.string(forKey: "main_event") ?? ""
         guard !bib.isEmpty, !birthYear.isEmpty, !code.isEmpty, !mainEvent.isEmpty else {
+#if DEBUG
             print("[LocationUpload] Missing required info in UserDefaults")
+#endif
             return
         }
         let bibNumber = Int(bib) ?? 0
@@ -984,7 +1010,9 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.httpBody = try? JSONSerialization.data(withJSONObject: payload)
+#if DEBUG
         print("[LocationUpload] Payload: \(payload)")
+#endif
         // Start background task
         backgroundTask = UIApplication.shared.beginBackgroundTask(withName: "LocationUpload") {
             UIApplication.shared.endBackgroundTask(self.backgroundTask)
@@ -992,9 +1020,13 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         }
         URLSession.shared.dataTask(with: req) { data, response, error in
             if let error = error {
+#if DEBUG
                 print("[LocationUpload] Error: \(error)")
+#endif
             } else if let httpResp = response as? HTTPURLResponse {
+#if DEBUG
                 print("[LocationUpload] Response: \(httpResp.statusCode)")
+#endif
             }
             if self.backgroundTask != .invalid {
                 UIApplication.shared.endBackgroundTask(self.backgroundTask)
@@ -1005,11 +1037,15 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
 
     func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
         let status = manager.authorizationStatus
+#if DEBUG
         print("locationManagerDidChangeAuthorization status changed: \(status)")
+#endif
         
         // Check if location services are enabled
         if isTracking && !CLLocationManager.locationServicesEnabled() {
+#if DEBUG
             print("Location services disabled, stopping tracking")
+#endif
             self.stopTracking() 
             isTracking = false
             NotificationCenter.default.post(name: NSNotification.Name("LocationTrackingDisabledAlert"), object: AlertType.trackingDisabled)
@@ -1019,7 +1055,9 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
 
         // If not authorizedAlways, stop tracking and alert
         if isTracking && status != .authorizedAlways {
+#if DEBUG
             print("Authorization lost (not always authorized), stopping tracking")
+#endif
             self.stopTracking()
             isTracking = false
             NotificationCenter.default.post(name: NSNotification.Name("LocationTrackingDisabledAlert"), object: AlertType.trackingDisabled)
@@ -1029,7 +1067,9 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
 
         let preciseLocation = manager.accuracyAuthorization == .fullAccuracy
         if isTracking && !preciseLocation {
+#if DEBUG
             print("Precise location lost, stopping tracking")
+#endif
             self.stopTracking()
             isTracking = false
             NotificationCenter.default.post(name: NSNotification.Name("LocationTrackingDisabledAlert"), object: AlertType.trackingDisabled)
@@ -1038,24 +1078,32 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         }
 
         if status == .notDetermined {
+#if DEBUG
             print("Requesting when in use authorization")
+#endif
             manager.requestWhenInUseAuthorization()
             return
         }
 
         if status == .authorizedWhenInUse {
+#if DEBUG
             print("Requesting always authorization")
+#endif
             manager.requestAlwaysAuthorization()
             return
         }
 
         if status == .denied {
+#if DEBUG
             print("Denied, will show alert when tracking is disabled")
+#endif
             return
         }
 
         if status == .authorizedAlways {
+#if DEBUG
             print("Authorized always, nothing to do")
+#endif
             return
         }
     }
