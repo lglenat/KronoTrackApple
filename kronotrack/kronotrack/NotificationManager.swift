@@ -11,6 +11,7 @@ class NotificationManager {
     func showTrackingNotification(isTracking: Bool) {
         if isTracking {
             // Create a one-time notification to inform user that tracking is active
+            clearTrackingNotifications()
             showTrackingActiveNotification()
         } else {
             // When tracking stops, just remove any existing notifications
@@ -19,9 +20,6 @@ class NotificationManager {
     }
     
     private func showTrackingActiveNotification() {
-        // First, remove any existing notification to prevent duplicates
-        clearTrackingNotifications()
-        
         let content = UNMutableNotificationContent()
         content.title = NSLocalizedString("Krono Location: Tracking Active", comment: "Tracking active notification title")
         content.body = NSLocalizedString("Your location is being uploaded every minute.", comment: "Tracking active notification body")
@@ -39,8 +37,8 @@ class NotificationManager {
     }
     
     private func clearTrackingNotifications() {
-        UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: [trackingNotificationIdentifier])
-        UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [trackingNotificationIdentifier])
+        UNUserNotificationCenter.current().removeAllDeliveredNotifications()
+        UNUserNotificationCenter.current().removeAllPendingNotificationRequests()
     }
     
     func showSimpleNotification(title: String, body: String) {
