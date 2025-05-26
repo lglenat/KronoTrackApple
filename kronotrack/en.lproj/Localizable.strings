@@ -1,0 +1,32 @@
+/* KronoTrack Localizable Strings (English) */
+
+"Course" = "Course";
+"Bib Number" = "Bib Number";
+"Birth Year" = "Birth Year";
+"Race Code" = "Race Code";
+"Show GPX Track" = "Show GPX Track";
+"Start Tracking" = "Start Tracking";
+"Stop Tracking" = "Stop Tracking";
+"KronoTrack" = "KronoTrack";
+"Privacy Policy" = "Privacy Policy";
+"Krono Location: Tracking Active" = "Krono Location: Tracking Active";
+"Your location is being uploaded every minute." = "Your location is being uploaded every minute.";
+
+/* Location Usage Descriptions */
+"This app needs your location to track your progress through the competition even when the app is in the background." = "This app needs your location to track your progress through the competition even when the app is in the background.";
+
+/* Error and Alert Strings */
+"Error" = "Error";
+"Location Services" = "Location Services";
+"Background Location" = "Background Location";
+"Precise Location" = "Precise Location";
+"Notifications" = "Notifications";
+"Tracking Disabled" = "Tracking Disabled";
+"To start tracking, please enable Location Services in Settings > Privacy & Security > Location Services." = "To start tracking, please enable Location Services in Settings > Privacy & Security > Location Services.";
+"To start tracking, please allow access to your precise location, set to 'Always'." = "To start tracking, please allow access to your precise location, set to 'Always'.";
+"To start tracking, please enable 'Precise Location' and 'Always' in your location settings." = "To start tracking, please enable 'Precise Location' and 'Always' in your location settings.";
+"To start tracking, please allow notifications." = "To start tracking, please allow notifications.";
+"Tracking has been disabled because location permissions changed or Location Services were turned off." = "Tracking has been disabled because location permissions changed or Location Services were turned off.";
+"OK" = "OK";
+"Open Settings" = "Open Settings";
+"Cancel" = "Cancel";

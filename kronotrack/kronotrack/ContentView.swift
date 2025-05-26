@@ -413,7 +413,7 @@ enum AlertType: Identifiable {
     case locationPermission
     case preciseLocation
     case notificationPermission
-    case trackingDisabled // NEW: dedicated alert for tracking disabled
+    case trackingDisabled
     
     var id: Int {
         switch self {
@@ -422,29 +422,29 @@ enum AlertType: Identifiable {
         case .locationPermission: return 1
         case .preciseLocation: return 2
         case .notificationPermission: return 3
-        case .trackingDisabled: return 5 // NEW
+        case .trackingDisabled: return 5
         }
     }
     
-    var title: String {
+    var titleKey: String {
         switch self {
-        case .error: return "Erreur"
-        case .locationServicesDisabled: return "Service de localisation"
-        case .locationPermission: return "Position en arrière plan"
-        case .preciseLocation: return "Position exacte en arrière plan"
+        case .error: return "Error"
+        case .locationServicesDisabled: return "Location Services"
+        case .locationPermission: return "Background Location"
+        case .preciseLocation: return "Precise Location"
         case .notificationPermission: return "Notifications"
-        case .trackingDisabled: return "Suivi désactivé" // NEW
+        case .trackingDisabled: return "Tracking Disabled"
         }
     }
     
-    var message: String {
+    var messageKey: String? {
         switch self {
-        case .error(let message): return message
-        case .locationServicesDisabled: return "Pour démarrer le suivi, veuillez d'abord activer le service de localisation de votre appareil dans Réglages > Confidentialité et sécurité > Service the localisation."
-        case .locationPermission: return "Pour démarrer le suivi, veuillez d'abord autoriser l'accès à votre position exacte, \"Toujours\"."
-        case .preciseLocation: return "Pour démarrer le suivi, veuillez d'abord activer \"Position exacte\" et \"Toujours\" dans les réglages d'accès à votre position."
-        case .notificationPermission: return "Pour démarrer le suivi, veuillez autoriser l'accès aux notifications."
-        case .trackingDisabled: return "Le suivi a été désactivé car les autorisations d'accès à la position ont changé, ou le service de localisation a été désactivé."
+        case .error(let message): return message // Already localized or dynamic
+        case .locationServicesDisabled: return "To start tracking, please enable Location Services in Settings > Privacy & Security > Location Services."
+        case .locationPermission: return "To start tracking, please allow access to your precise location, set to 'Always'."
+        case .preciseLocation: return "To start tracking, please enable 'Precise Location' and 'Always' in your location settings."
+        case .notificationPermission: return "To start tracking, please allow notifications."
+        case .trackingDisabled: return "Tracking has been disabled because location permissions changed or Location Services were turned off."
         }
     }
 }
@@ -843,26 +843,20 @@ struct ContentView: View {
                 switch alertType {
                 case .error(let message):
                     return Alert(
-                        title: Text(alertType.title),
+                        title: Text(NSLocalizedString(alertType.titleKey, comment: "")),
                         message: Text(message),
                         dismissButton: .default(Text("OK"))
                     )
-                case .locationServicesDisabled:
+                case .locationServicesDisabled, .trackingDisabled:
                     return Alert(
-                        title: Text(alertType.title),
-                        message: Text(alertType.message),
-                        dismissButton: .default(Text("OK"))
-                    )
-                case .trackingDisabled:
-                    return Alert(
-                        title: Text(alertType.title),
-                        message: Text(alertType.message),
+                        title: Text(NSLocalizedString(alertType.titleKey, comment: "")),
+                        message: Text(NSLocalizedString(alertType.messageKey ?? "", comment: "")),
                         dismissButton: .default(Text("OK"))
                     )
                 case .locationPermission, .preciseLocation, .notificationPermission:
                     return Alert(
-                        title: Text(alertType.title),
-                        message: Text(alertType.message),
+                        title: Text(NSLocalizedString(alertType.titleKey, comment: "")),
+                        message: Text(NSLocalizedString(alertType.messageKey ?? "", comment: "")),
                         primaryButton: .default(Text("Ouvrir les réglages")) {
                             openAppSettings()
                         },
@@ -1057,7 +1051,7 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         }
 
         if status == .denied {
-            print("Denied, will show alert when starting tracking")
+            print("Denied, will show alert when tracking is disabled")
             return
         }
 

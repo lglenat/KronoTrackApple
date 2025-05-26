@@ -1,0 +1,32 @@
+/* KronoTrack Localizable Strings (French) */
+
+"Course" = "Course";
+"Bib Number" = "Dossard";
+"Birth Year" = "Année Naiss.";
+"Race Code" = "Code";
+"Show GPX Track" = "Afficher le tracé GPX";
+"Start Tracking" = "Démarrer le suivi";
+"Stop Tracking" = "Arrêter le suivi";
+"KronoTrack" = "KronoTrack";
+"Privacy Policy" = "Politique de confidentialité";
+"Krono Location: Tracking Active" = "Krono Localisation : Suivi actif";
+"Your location is being uploaded every minute." = "Votre position est suivie et envoyée au serveur KronoTiming une fois par minute.";
+
+/* Location Usage Descriptions */
+"This app needs your location to track your progress through the competition even when the app is in the background." = "Cette application a besoin de votre position pour suivre votre progression pendant la compétition, même lorsque l'application est en arrière-plan.";
+
+/* Error and Alert Messages */
+"Error" = "Erreur";
+"Location Services" = "Service de localisation";
+"Background Location" = "Position en arrière plan";
+"Precise Location" = "Position exacte en arrière plan";
+"Notifications" = "Notifications";
+"Tracking Disabled" = "Suivi désactivé";
+"To start tracking, please enable Location Services in Settings > Privacy & Security > Location Services." = "Pour démarrer le suivi, veuillez d'abord activer le service de localisation de votre appareil dans Réglages > Confidentialité et sécurité > Service de localisation.";
+"To start tracking, please allow access to your precise location, set to 'Always'." = "Pour démarrer le suivi, veuillez d'abord autoriser l'accès à votre position exacte, \"Toujours\".";
+"To start tracking, please enable 'Precise Location' and 'Always' in your location settings." = "Pour démarrer le suivi, veuillez d'abord activer \"Position exacte\" et \"Toujours\" dans les réglages d'accès à votre position.";
+"To start tracking, please allow notifications." = "Pour démarrer le suivi, veuillez autoriser l'accès aux notifications.";
+"Tracking has been disabled because location permissions changed or Location Services were turned off." = "Le suivi a été désactivé car les autorisations d'accès à la position ont changé, ou le service de localisation a été désactivé.";
+"OK" = "OK";
+"Open Settings" = "Ouvrir les réglages";
+"Cancel" = "Annuler";
