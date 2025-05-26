@@ -13,6 +13,10 @@
 "Background location tracking enabled." = "Suivi de position en arrière plan activé.";
 "Results" = "Résultats";
 "Please fill in all fields." = "Veuillez remplir tous les champs correctement.";
+"Water" = "Eau";
+"Food" = "Ravito";
+"Signal" = "Signaleur";
+"Start" = "Départ";
 
 /* Location Usage Descriptions */
 "This app needs your location to track your progress through the competition even when the app is in the background." = "Cette application a besoin de votre position pour suivre votre progression pendant la compétition, même lorsque l'application est en arrière-plan.";

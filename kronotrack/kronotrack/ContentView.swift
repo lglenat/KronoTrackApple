@@ -40,6 +40,39 @@ struct RunnerInfo {
     let code: String
 }
 
+struct TrackMarker: Identifiable, Hashable {
+    let id = UUID()
+    let coordinate: CLLocationCoordinate2D
+    let type: String
+    static func == (lhs: TrackMarker, rhs: TrackMarker) -> Bool {
+        lhs.coordinate.latitude == rhs.coordinate.latitude &&
+        lhs.coordinate.longitude == rhs.coordinate.longitude &&
+        lhs.type == rhs.type
+    }
+    func hash(into hasher: inout Hasher) {
+        hasher.combine(coordinate.latitude)
+        hasher.combine(coordinate.longitude)
+        hasher.combine(type)
+    }
+}
+
+struct TrackData: Hashable {
+    let points: [CLLocationCoordinate2D]
+    let markers: [TrackMarker]
+    static func == (lhs: TrackData, rhs: TrackData) -> Bool {
+        lhs.points == rhs.points && lhs.markers == rhs.markers
+    }
+    func hash(into hasher: inout Hasher) {
+        for pt in points {
+            hasher.combine(pt.latitude)
+            hasher.combine(pt.longitude)
+        }
+        for m in markers {
+            hasher.combine(m)
+        }
+    }
+}
+
 class AppViewModel: ObservableObject {
     @Published var courses: [Course] = []
     @Published var selectedCourse: Course? = nil
@@ -54,7 +87,7 @@ class AppViewModel: ObservableObject {
     }
     @Published var isTracking: Bool = false
     @Published var mapRegion = MKCoordinateRegion(center: CLLocationCoordinate2D(latitude: 48.858844, longitude: 2.294351), span: MKCoordinateSpan(latitudeDelta: 0.01, longitudeDelta: 0.01))
-    @Published var gpxCoordinates: [GPXPoint] = []
+    @Published var trackData: TrackData? = nil
     @Published var userLocation: CLLocationCoordinate2D? = nil
     @Published var isLoading: Bool = false
     @Published var errorMessage: String? = nil
@@ -75,6 +108,32 @@ class AppViewModel: ObservableObject {
             maxLat = max(maxLat, pt.coordinate.latitude)
             minLon = min(minLon, pt.coordinate.longitude)
             maxLon = max(maxLon, pt.coordinate.longitude)
+        }
+        let latDelta = maxLat - minLat
+        let lonDelta = maxLon - minLon
+        let latPad = latDelta * 0.2
+        let lonPad = lonDelta * 0.2
+        let center = CLLocationCoordinate2D(latitude: (minLat + maxLat) / 2, longitude: (minLon + maxLon) / 2)
+        let minSpan = 0.002
+        let span = MKCoordinateSpan(
+            latitudeDelta: max(latDelta + 2 * latPad, minSpan),
+            longitudeDelta: max(lonDelta + 2 * lonPad, minSpan)
+        )
+        return MKCoordinateRegion(center: center, span: span)
+    }
+
+    // Helper to compute region for a track
+    static func regionForTrack(_ points: [CLLocationCoordinate2D]) -> MKCoordinateRegion? {
+        guard !points.isEmpty else { return nil }
+        var minLat = points.first!.latitude
+        var maxLat = points.first!.latitude
+        var minLon = points.first!.longitude
+        var maxLon = points.first!.longitude
+        for pt in points {
+            minLat = min(minLat, pt.latitude)
+            maxLat = max(maxLat, pt.latitude)
+            minLon = min(minLon, pt.longitude)
+            maxLon = max(maxLon, pt.longitude)
         }
         let latDelta = maxLat - minLat
         let lonDelta = maxLon - minLon
@@ -112,12 +171,11 @@ class AppViewModel: ObservableObject {
             }
         }.resume()
     }
-    func setRegionForTrack(_ coords: [GPXPoint]) {
-        guard let region = Self.regionForGPXTrack(coords) else { return }
+    func setRegionForTrack(_ coords: [CLLocationCoordinate2D]) {
+        guard let region = Self.regionForTrack(coords) else { return }
         if let notifyRegionChange = self.notifyRegionChange {
             notifyRegionChange(region)
         } else {
-            // Fallback if callback is not set
             DispatchQueue.main.async {
                 withAnimation {
                     self.mapRegion = region
@@ -129,9 +187,9 @@ class AppViewModel: ObservableObject {
         guard let url = URL(string: course.gpxUrl) else { return }
         URLSession.shared.dataTask(with: url) { data, _, _ in
             guard let data = data, let gpxString = String(data: data, encoding: .utf8) else { return }
-            let coords = GPXParser.parseCoordinates(from: gpxString)
+            let coords = GPXParser.parseCoordinates(from: gpxString).map { $0.coordinate }
             DispatchQueue.main.async {
-                self.gpxCoordinates = coords
+                self.trackData = TrackData(points: coords, markers: [])
                 self.setRegionForTrack(coords)
             }
         }.resume()
@@ -228,24 +286,27 @@ class AppViewModel: ObservableObject {
                 return
             }
             
-            // Process track data if available
+            // Parse track points
+            var points: [CLLocationCoordinate2D] = []
             if let trackArr = obj["track"] as? [[Any]] {
-                let coords: [GPXPoint] = trackArr.compactMap { arr in
+                points = trackArr.compactMap { arr in
                     if arr.count == 2, let lat = arr[0] as? Double, let lon = arr[1] as? Double {
-                        return GPXPoint(coordinate: CLLocationCoordinate2D(latitude: lat, longitude: lon))
+                        return CLLocationCoordinate2D(latitude: lat, longitude: lon)
                     }
                     return nil
                 }
-                DispatchQueue.main.async {
-                    self.gpxCoordinates = coords
-                    self.errorMessage = nil
-                    // --- Jump to GPX track region when starting tracking ---
-                    if let region = Self.regionForGPXTrack(coords) {
-                        self.notifyRegionChange?(region)
+            }
+            // Parse markers (no label, just type)
+            var markers: [TrackMarker] = []
+            if let markerArr = obj["markers"] as? [[String: Any]] {
+                for marker in markerArr {
+                    if let lat = marker["lat"] as? Double,
+                       let lon = marker["lon"] as? Double,
+                       let type = marker["type"] as? String {
+                        markers.append(TrackMarker(coordinate: CLLocationCoordinate2D(latitude: lat, longitude: lon), type: type))
                     }
                 }
             }
-            
             // Process runner info
             let firstName = obj["firstName"] as? String ?? ""
             let lastName = obj["lastName"] as? String ?? ""
@@ -253,7 +314,8 @@ class AppViewModel: ObservableObject {
             
             // All good - update UI and start tracking
             DispatchQueue.main.async {
-                self.isLoading = false
+                self.trackData = TrackData(points: points, markers: markers)
+                self.setRegionForTrack(points)
                 
                 self.runnerInfo = RunnerInfo(
                     firstName: firstName,
@@ -264,6 +326,7 @@ class AppViewModel: ObservableObject {
                     code: self.code
                 )
                 
+                self.isLoading = false
                 self.isTracking = true
                 locationManager.startTracking()
                 completion(true)
@@ -275,12 +338,12 @@ class AppViewModel: ObservableObject {
 // MARK: - MapPolylineView for SwiftUI
 
 struct MapPolylineView: UIViewRepresentable {
-    var coordinates: [CLLocationCoordinate2D]
+    var trackData: TrackData?
     var userLocation: CLLocationCoordinate2D?
     @Binding var region: MKCoordinateRegion
-    var isMapInteractionEnabled: Bool = true // new property
-    var onUserInteraction: (() -> Void)? = nil // new property
-    var programmaticRegionChangeID: UUID = UUID() // new property
+    var isMapInteractionEnabled: Bool = true
+    var onUserInteraction: (() -> Void)? = nil
+    var programmaticRegionChangeID: UUID = UUID()
 
     func makeUIView(context: Context) -> MKMapView {
         let mapView = MKMapView()
@@ -291,34 +354,50 @@ struct MapPolylineView: UIViewRepresentable {
         mapView.pointOfInterestFilter = .excludingAll
         mapView.isZoomEnabled = isMapInteractionEnabled
         mapView.isScrollEnabled = isMapInteractionEnabled
-        mapView.setRegion(region, animated: false)
-        // Add overlays initially if coordinates exist
-        context.coordinator.updateOverlaysIfNeeded(on: mapView, newCoordinates: coordinates)
         return mapView
     }
 
     func updateUIView(_ mapView: MKMapView, context: Context) {
-        // Only update overlays if coordinates changed
-        context.coordinator.updateOverlaysIfNeeded(on: mapView, newCoordinates: coordinates)
-        // Detect programmaticRegionChangeID change to trigger region update
-        if context.coordinator.lastProgrammaticRegionChangeID != programmaticRegionChangeID {
-            context.coordinator.isProgrammaticRegionChange = true
-            context.coordinator.lastProgrammaticRegionChangeID = programmaticRegionChangeID
-        }
-        // Only set region if a programmatic change is requested
-        if context.coordinator.isProgrammaticRegionChange {
-            let regionToSet = region
-            if mapView.region.center.latitude != regionToSet.center.latitude ||
-                mapView.region.center.longitude != regionToSet.center.longitude ||
-                mapView.region.span.latitudeDelta != regionToSet.span.latitudeDelta ||
-                mapView.region.span.longitudeDelta != regionToSet.span.longitudeDelta {
-                mapView.setRegion(regionToSet, animated: true)
+        // Remove overlays and annotations
+        mapView.removeOverlays(mapView.overlays)
+        mapView.removeAnnotations(mapView.annotations)
+        // Draw polyline
+        if let track = trackData, !track.points.isEmpty {
+            let glowPolyline = MKPolyline(coordinates: track.points, count: track.points.count)
+            glowPolyline.title = "glow"
+            mapView.addOverlay(glowPolyline, level: .aboveLabels)
+            let mainPolyline = MKPolyline(coordinates: track.points, count: track.points.count)
+            mainPolyline.title = "main"
+            mapView.addOverlay(mainPolyline, level: .aboveLabels)
+            // Add markers
+            for marker in track.markers {
+                let annotation = MKPointAnnotation()
+                annotation.coordinate = marker.coordinate
+                annotation.title = markerTypeToLocalizedTitle(marker.type)
+                mapView.addAnnotation(annotation)
             }
-            context.coordinator.isProgrammaticRegionChange = false
+            // Add start marker at first point if not present
+            if let first = track.points.first, !track.markers.contains(where: { $0.type == "start" }) {
+                let annotation = MKPointAnnotation()
+                annotation.coordinate = first
+                annotation.title = markerTypeToLocalizedTitle("start")
+                mapView.addAnnotation(annotation)
+            }
         }
-        // Remove custom user location annotation: rely on showsUserLocation for blue dot
-        mapView.isZoomEnabled = isMapInteractionEnabled
-        mapView.isScrollEnabled = isMapInteractionEnabled
+        // --- NEW: Animate to region if changed or programmaticRegionChangeID changes ---
+        // Use associated object to store last region and last programmaticRegionChangeID
+        struct Holder { static var lastRegion: MKCoordinateRegion?; static var lastID: UUID? }
+        let regionChanged = Holder.lastRegion == nil ||
+            Holder.lastRegion!.center.latitude != region.center.latitude ||
+            Holder.lastRegion!.center.longitude != region.center.longitude ||
+            Holder.lastRegion!.span.latitudeDelta != region.span.latitudeDelta ||
+            Holder.lastRegion!.span.longitudeDelta != region.span.longitudeDelta
+        let idChanged = Holder.lastID != programmaticRegionChangeID
+        if regionChanged || idChanged {
+            mapView.setRegion(region, animated: true)
+            Holder.lastRegion = region
+            Holder.lastID = programmaticRegionChangeID
+        }
     }
 
     func makeCoordinator() -> Coordinator {
@@ -328,8 +407,7 @@ struct MapPolylineView: UIViewRepresentable {
     class Coordinator: NSObject, MKMapViewDelegate {
         var region: Binding<MKCoordinateRegion>
         var isProgrammaticRegionChange = false
-        var lastProgrammaticRegionChangeID: UUID? = nil // <--- add this
-        private var lastCoordinates: [CLLocationCoordinate2D] = []
+        var lastProgrammaticRegionChangeID: UUID? = nil
         var onUserInteraction: (() -> Void)? = nil
 
         init(region: Binding<MKCoordinateRegion>, onUserInteraction: (() -> Void)? = nil) {
@@ -337,35 +415,7 @@ struct MapPolylineView: UIViewRepresentable {
             self.onUserInteraction = onUserInteraction
         }
 
-        func updateOverlaysIfNeeded(on mapView: MKMapView, newCoordinates: [CLLocationCoordinate2D]) {
-            guard newCoordinates != lastCoordinates else { return }
-            // Remove all polylines (but not tile overlays)
-            let overlaysToRemove = mapView.overlays.filter { !($0 is MKTileOverlay) }
-            mapView.removeOverlays(overlaysToRemove)
-            if newCoordinates.count > 1 {
-                let glowPolyline = MKPolyline(coordinates: newCoordinates, count: newCoordinates.count)
-                glowPolyline.title = "glow"
-                mapView.addOverlay(glowPolyline, level: .aboveLabels)
-                let mainPolyline = MKPolyline(coordinates: newCoordinates, count: newCoordinates.count)
-                mainPolyline.title = "main"
-                mapView.addOverlay(mainPolyline, level: .aboveLabels)
-            }
-            lastCoordinates = newCoordinates
-        }
-
-        func mapView(_ mapView: MKMapView, regionDidChangeAnimated animated: Bool) {
-            if isProgrammaticRegionChange {
-                isProgrammaticRegionChange = false
-                return
-            }
-            region.wrappedValue = mapView.region
-            onUserInteraction?()
-        }
-
         func mapView(_ mapView: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
-            // if let tileOverlay = overlay as? MKTileOverlay {
-            //     return MKTileOverlayRenderer(tileOverlay: tileOverlay)
-            // }
             if let polyline = overlay as? MKPolyline {
                 if polyline.title == "glow" {
                     let renderer = MKPolylineRenderer(polyline: polyline)
@@ -376,8 +426,8 @@ struct MapPolylineView: UIViewRepresentable {
                     return renderer
                 } else if polyline.title == "main" {
                     let renderer = MKPolylineRenderer(polyline: polyline)
-                    renderer.strokeColor = UIColor(red: 120/255, green: 0.7, blue: 1.0, alpha: 1.0) // Bright purple/indigo
-                    renderer.lineWidth = 2 
+                    renderer.strokeColor = UIColor(red: 120/255, green: 0.7, blue: 1.0, alpha: 1.0)
+                    renderer.lineWidth = 2
                     renderer.lineJoin = .round
                     renderer.lineCap = .round
                     return renderer
@@ -385,10 +435,48 @@ struct MapPolylineView: UIViewRepresentable {
             }
             return MKOverlayRenderer(overlay: overlay)
         }
+
+        func mapView(_ mapView: MKMapView, viewFor annotation: MKAnnotation) -> MKAnnotationView? {
+            if annotation is MKUserLocation { return nil }
+            let identifier = "TrackMarker"
+            var view = mapView.dequeueReusableAnnotationView(withIdentifier: identifier) as? MKMarkerAnnotationView
+            if view == nil {
+                view = MKMarkerAnnotationView(annotation: annotation, reuseIdentifier: identifier)
+                view?.canShowCallout = true
+            } else {
+                view?.annotation = annotation
+            }
+            // Customize marker color/icon based on type
+            let type = annotation.title ?? ""
+            switch type {
+            case NSLocalizedString("Water", comment: "marker type"):
+                view?.markerTintColor = .systemBlue
+                view?.glyphImage = UIImage(systemName: "drop.fill")
+            case NSLocalizedString("Food", comment: "marker type"):
+                view?.markerTintColor = .systemGreen
+                view?.glyphImage = UIImage(systemName: "fork.knife")
+            case NSLocalizedString("Signal", comment: "marker type"):
+                view?.markerTintColor = .systemOrange
+                view?.glyphImage = UIImage(systemName: "antenna.radiowaves.left.and.right")
+            case NSLocalizedString("Start", comment: "marker type"):
+                view?.markerTintColor = .systemPurple
+                view?.glyphImage = UIImage(systemName: "flag.fill")
+            default:
+                view?.markerTintColor = .systemGray
+                view?.glyphImage = UIImage(systemName: "mappin")
+            }
+            return view
+        }
     }
 
-    static func setNextProgrammaticRegionChange() {
-        // This function can be used to set a flag for the next programmatic region change
+    private func markerTypeToLocalizedTitle(_ type: String) -> String {
+        switch type.lowercased() {
+        case "water": return NSLocalizedString("Water", comment: "marker type")
+        case "food": return NSLocalizedString("Food", comment: "marker type")
+        case "signal": return NSLocalizedString("Signal", comment: "marker type")
+        case "start": return NSLocalizedString("Start", comment: "marker type")
+        default: return type.capitalized
+        }
     }
 }
 
@@ -609,7 +697,7 @@ struct ContentView: View {
         NavigationView {
             ZStack(alignment: .top) {
                 MapPolylineView(
-                    coordinates: viewModel.gpxCoordinates.map { $0.coordinate },
+                    trackData: viewModel.trackData,
                     userLocation: locationManager.userLocation,
                     region: $viewModel.mapRegion,
                     isMapInteractionEnabled: !isAutoNavigating,
@@ -619,7 +707,7 @@ struct ContentView: View {
                             autoNavTimer?.invalidate()
                         }
                     },
-                    programmaticRegionChangeID: programmaticRegionChangeID // new param
+                    programmaticRegionChangeID: programmaticRegionChangeID
                 )
                 .edgesIgnoringSafeArea(.all)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -634,6 +722,12 @@ struct ContentView: View {
                                 self.jumpToRegion(region)
                             }
                         }
+                    // Ensure initial centering if trackData exists
+                    if let points = viewModel.trackData?.points, !points.isEmpty {
+                        if let region = AppViewModel.regionForTrack(points) {
+                            jumpToRegion(region)
+                        }
+                    }
                 }
                 // Overlay controls and buttons
                 VStack {
@@ -718,29 +812,10 @@ struct ContentView: View {
                         Spacer()
                         VStack(spacing: 16) {
                             Button(action: {
-                                if !viewModel.gpxCoordinates.isEmpty {
-                                    var minLat = viewModel.gpxCoordinates.first!.coordinate.latitude
-                                    var maxLat = minLat
-                                    var minLon = viewModel.gpxCoordinates.first!.coordinate.longitude
-                                    var maxLon = minLon
-                                    for pt in viewModel.gpxCoordinates {
-                                        minLat = min(minLat, pt.coordinate.latitude)
-                                        maxLat = max(maxLat, pt.coordinate.latitude)
-                                        minLon = min(minLon, pt.coordinate.longitude)
-                                        maxLon = max(maxLon, pt.coordinate.longitude)
+                                if let points = viewModel.trackData?.points, !points.isEmpty {
+                                    if let region = AppViewModel.regionForTrack(points) {
+                                        jumpToRegion(region)
                                     }
-                                    let latDelta = maxLat - minLat
-                                    let lonDelta = maxLon - minLon
-                                    let latPad = latDelta * 0.2
-                                    let lonPad = lonDelta * 0.2
-                                    let center = CLLocationCoordinate2D(latitude: (minLat + maxLat) / 2, longitude: (minLon + maxLon) / 2)
-                                    let minSpan = 0.002
-                                    let span = MKCoordinateSpan(
-                                        latitudeDelta: max(latDelta + 2 * latPad, minSpan),
-                                        longitudeDelta: max(lonDelta + 2 * lonPad, minSpan)
-                                    )
-                                    let region = MKCoordinateRegion(center: center, span: span)
-                                    jumpToRegion(region)
                                 }
                             }) {
                                 Image(systemName: "point.topleft.down.curvedto.point.bottomright.up")
@@ -750,7 +825,7 @@ struct ContentView: View {
                                     .clipShape(Circle())
                                     .shadow(radius: 2)
                             }
-                            .disabled(!viewModel.isTracking)
+                            .disabled(!(viewModel.trackData?.points.isEmpty == false))
                             Button(action: {
                                 if let userLoc = locationManager.userLocation {
                                     let region = MKCoordinateRegion(center: userLoc, span: viewModel.mapRegion.span)

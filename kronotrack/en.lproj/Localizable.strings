@@ -1,6 +1,6 @@
 /* KronoTrack Localizable Strings (English) */
 
-"Course" = "Race";
+"Race" = "Race";
 "Bib Number" = "Bib Number";
 "Birth Year" = "Birth Year";
 "Race Code" = "Race Code";
@@ -13,6 +13,10 @@
 "Background location tracking enabled." = "Background location tracking enabled.";
 "Results" = "Results";
 "Please fill in all fields." = "Please fill in all fields.";
+"Water" = "Water";
+"Food" = "Food";
+"Signal" = "Signal";
+"Start" = "Start";
 
 /* Location Usage Descriptions */
 "This app needs your location to track your progress through the competition even when the app is in the background." = "This app needs your location to track your progress through the competition even when the app is in the background.";
