@@ -307,6 +307,10 @@ class AppViewModel: ObservableObject {
                     }
                 }
             }
+            // --- Add start marker at first point if not present ---
+            if let first = points.first, !markers.contains(where: { $0.type.lowercased() == "start" }) {
+                markers.insert(TrackMarker(coordinate: first, type: "start"), at: 0)
+            }
             // Process runner info
             let firstName = obj["firstName"] as? String ?? ""
             let lastName = obj["lastName"] as? String ?? ""
@@ -463,14 +467,15 @@ struct MapPolylineView: UIViewRepresentable {
                 view?.markerTintColor = .systemBlue
                 view?.glyphImage = UIImage(systemName: "drop.fill")
             case NSLocalizedString("Food", comment: "marker type"):
-                view?.markerTintColor = .systemGreen
+                view?.markerTintColor = .systemBrown
                 view?.glyphImage = UIImage(systemName: "fork.knife")
             case NSLocalizedString("Signal", comment: "marker type"):
                 view?.markerTintColor = .systemOrange
-                view?.glyphImage = UIImage(systemName: "antenna.radiowaves.left.and.right")
+                view?.glyphImage = UIImage(systemName: "figure.wave")
             case NSLocalizedString("Start", comment: "marker type"):
-                view?.markerTintColor = .systemPurple
+                view?.markerTintColor = .systemGreen
                 view?.glyphImage = UIImage(systemName: "flag.fill")
+                view?.displayPriority = .required
             default:
                 view?.markerTintColor = .systemGray
                 view?.glyphImage = UIImage(systemName: "mappin")
