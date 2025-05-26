@@ -20,6 +20,8 @@
 /* Error and Alert Messages */
 "Error" = "Erreur";
 "Server error" = "Erreur serveur";
+"Invalid bib number or birth year." = "Dossard ou année de naissance invalide.";
+"Invalid code for this race." = "Code course incorrect.";
 "Server or network error" = "Erreur serveur ou réseau.";
 "Start tracking error" = "Erreur lors du démarrage du suivi.";
 "Failed to decode response." = "Erreur de décodage de la réponse.";

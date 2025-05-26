@@ -187,14 +187,21 @@ class AppViewModel: ObservableObject {
                 return
             }
             
-            // Handle HTTP errors
+            // Handle HTTP errors with specific messages for 403 and 404
             if let httpResponse = response as? HTTPURLResponse, !(200...299).contains(httpResponse.statusCode) {
 #if DEBUG
                 print("API HTTP Error: \(httpResponse.statusCode)")
 #endif
                 DispatchQueue.main.async {
                     self.isLoading = false
-                    self.errorMessage = NSLocalizedString("Server error", comment: "Server error")
+                    switch httpResponse.statusCode {
+                    case 404:
+                        self.errorMessage = NSLocalizedString("Invalid bib number or birth year.", comment: "invalid bib or birth year")
+                    case 403:
+                        self.errorMessage = NSLocalizedString("Invalid code for this race.", comment: "invalid code")
+                    default:
+                        self.errorMessage = NSLocalizedString("Server error", comment: "Server error")
+                    }
                     completion(false)
                 }
                 return
@@ -980,7 +987,9 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         uploadLocation(location: loc)
     }
     private func uploadLocation(location: CLLocation) {
-        print("will try to upload location")
+        #if DEBUG
+            print("will try to upload location")
+        #endif
         let token = "RyZpcmUpdU9jKz14cjA9e2wqMnF3WSRmNThDOmU4b3IqRjAvLTszMVorRV9DbUNiRihneSl7b1F9JH01c2ItVw"
         // Read all required info from UserDefaults
         let bib = UserDefaults.standard.string(forKey: "bib") ?? ""

@@ -22,6 +22,8 @@
 "Failed to decode response." = "Failed to decode response.";
 "Error" = "Error";
 "Server error" = "Server error";
+"Invalid bib number or birth year." = "Invalid bib number or birth year.";
+"Invalid code for this race." = "Invalid code for this race.";
 "Server or network error" = "Server or network error";
 "Location Services" = "Location Services";
 "Background Location" = "Background Location";
