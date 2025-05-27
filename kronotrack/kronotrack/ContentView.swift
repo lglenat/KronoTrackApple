@@ -1010,7 +1010,8 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
     }
     
     @objc private func appDidEnterBackground() {
-        manager.distanceFilter = 100
+        // manager.distanceFilter = 100 // 100 gave very few points when walking around brooklyn
+        manager.distanceFilter = 10 // 10 gave pretty good results, roughly sending once per minute when walking, similar experience to android every minute, should check what happens when running
         // manager.distanceFilter = kCLDistanceFilterNone
         manager.desiredAccuracy = kCLLocationAccuracyNearestTenMeters
         // manager.desiredAccuracy = kCLLocationAccuracyBest
