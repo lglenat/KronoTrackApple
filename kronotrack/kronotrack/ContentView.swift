@@ -869,7 +869,7 @@ struct ContentView: View {
                     if viewModel.isTracking, let info = viewModel.runnerInfo {
                         RunnerInfoCard(info: info)
                             .padding(.bottom, 36)
-                            .padding(.horizontal, 8)
+                            .padding(.horizontal, 80) // Ensures margin with left/right buttons
                             .transition(.move(edge: .bottom).combined(with: .opacity))
                             .zIndex(2)
                     }
@@ -1249,11 +1249,15 @@ struct RunnerInfoCard: View {
                     .foregroundColor(Color.purple)
                 Text("\(info.firstName) \(info.lastName)")
                     .font(.headline)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
             }
             HStack {
                 Image(systemName: "flag.fill")
                     .foregroundColor(.secondary)
                 Text(info.eventName)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
             }
         }
         .padding(.vertical, 10)
