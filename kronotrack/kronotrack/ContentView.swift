@@ -1247,17 +1247,23 @@ struct RunnerInfoCard: View {
             HStack {
                 Image(systemName: "person.fill")
                     .foregroundColor(Color.purple)
-                Text("\(info.firstName) \(info.lastName)")
-                    .font(.headline)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
+                ScrollView(.horizontal, showsIndicators: false) {
+                    Text("\(info.firstName) \(info.lastName)")
+                        .font(.headline)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
             }
             HStack {
                 Image(systemName: "flag.fill")
                     .foregroundColor(.secondary)
-                Text(info.eventName)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
+                ScrollView(.horizontal, showsIndicators: false) {
+                    Text(info.eventName)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
             }
         }
         .padding(.vertical, 10)
