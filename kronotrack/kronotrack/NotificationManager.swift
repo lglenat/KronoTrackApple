@@ -10,12 +10,15 @@ class NotificationManager {
 
     func showTrackingNotification(isTracking: Bool) {
         if isTracking {
+            // Remove any existing previous notifications
+            UNUserNotificationCenter.current().removeAllDeliveredNotifications()
+            UNUserNotificationCenter.current().removeAllPendingNotificationRequests()
             // Create a one-time notification to inform user that tracking is active
-            clearTrackingNotifications()
             showTrackingActiveNotification()
         } else {
-            // When tracking stops, just remove any existing notifications
-            clearTrackingNotifications()
+            // When tracking stops, remove the tracking notification, keep others
+            UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: [trackingNotificationIdentifier])
+            UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [trackingNotificationIdentifier])
         }
     }
     
@@ -34,11 +37,6 @@ class NotificationManager {
                 print("Error showing tracking notification: \(error)")
             }
         }
-    }
-    
-    private func clearTrackingNotifications() {
-        UNUserNotificationCenter.current().removeAllDeliveredNotifications()
-        UNUserNotificationCenter.current().removeAllPendingNotificationRequests()
     }
     
     func showSimpleNotification(title: String, body: String) {

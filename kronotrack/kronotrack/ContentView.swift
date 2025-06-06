@@ -585,7 +585,7 @@ struct ContentView: View {
         _viewModel = StateObject(wrappedValue: vm)
         // Connect the view model's region change notification to our jumpToRegion function
         vm.notifyRegionChange = { [weak vm] region in
-            guard let vm = vm else { return }
+            guard vm != nil else { return }
             // We need to access self (ContentView), but we can't do that directly in init
             // We'll use a DispatchQueue to break the reference cycle
             DispatchQueue.main.async {
@@ -664,26 +664,18 @@ struct ContentView: View {
     }
 
     private func locationPermissionCheckedContinue() {
+        // Request notification permission only if not determined, but do not block tracking if denied
         UNUserNotificationCenter.current().getNotificationSettings { settings in
-            DispatchQueue.main.async {
-                switch settings.authorizationStatus {
-                case .notDetermined:
-                    UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
-                        DispatchQueue.main.async {
-                            if granted {
-                                self.continueStartTracking()
-                            } else {
-                                self.viewModel.isLoading = false
-                                self.currentAlert = .notificationPermission
-                            }
-                        }
+            if settings.authorizationStatus == .notDetermined {
+                UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
+                    // Permission result is not required for tracking; proceed regardless
+                    DispatchQueue.main.async {
+                        self.continueStartTracking()
                     }
-                case .denied:
-                    self.viewModel.isLoading = false
-                    self.currentAlert = .notificationPermission
-                case .authorized, .provisional, .ephemeral:
-                    self.continueStartTracking()
-                @unknown default:
+                }
+            } else {
+                // Already determined (authorized or denied), proceed regardless
+                DispatchQueue.main.async {
                     self.continueStartTracking()
                 }
             }
